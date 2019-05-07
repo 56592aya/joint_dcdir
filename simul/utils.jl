@@ -3,6 +3,7 @@ using DataStructures
 using StatsBase
 using StatsPlots
 using Plots
+using LinearAlgebra
 #single value
 function trigamma_(x::Float64)
     x += 6;
