@@ -5,7 +5,8 @@ using StatsBase
 using StatsPlots
 using Plots
 using LinearAlgebra
-#single value
+using SpecialFunctions
+
 function trigamma_(x::Float64)
     x += 6;
     p = 1.0 /(x*x)
@@ -18,15 +19,6 @@ function trigamma_(x::Float64)
     p
 end
 
-
-# vs = (collect(LinRange(0.0, 100.0, 201)))[2:end]
-# valst = [trigamma_(v) for v in vs]
-# valsd = [digamma_(v) for v in vs]
-# valsl = [lgamma_(v) for v in vs]
-# Plots.plot(vs, valst)
-# Plots.plot(vs, valsd)
-# Plots.plot(vs, valsl)
-
 function digamma_(x::Float64)
 	p=zero(Float64)
   	x=x+6.0
@@ -35,7 +27,7 @@ function digamma_(x::Float64)
   	p=p+log(x)-0.5/x-1.0/(x-1.0)-1.0/(x-2.0)-1.0/(x-3.0)-1.0/(x-4.0)-1.0/(x-5.0)-1.0/(x-6.0)
   	p
 end
-#single_value
+
 function lgamma_(x::Float64)
 	z=1.0/(x*x)
  	x=x+6.0
@@ -44,7 +36,6 @@ function lgamma_(x::Float64)
   z
 end
 
-# give me a K1*K2 matrix and I give you row sums(topic wise) or col sums(community wise)
 function get_1dim_dist(M::Matrix{Float64}, cnr::Int64)
 	if (cnr == 1)
 		return sum(M, dims=2)[:,1]
@@ -80,9 +71,9 @@ function logsumexp(X::Vector{Float64})
             alpha = x
         end
     end
-    # log1p(r-1.0) + alpha
     log(r) + alpha
 end
+
 function logsumexp(X::Float64, Y::Float64)
     alpha = -Inf;r = 0.0;
     if X <= alpha
@@ -99,26 +90,17 @@ function logsumexp(X::Float64, Y::Float64)
         r += 1.0
         alpha = Y
     end
-    # log1p(r-1.0) + alpha
     log(r) + alpha
 end
 function softmax(X::Vector{Float64})
     lse = logsumexp(X)
     return  @.(exp(X-lse))
 end
-###Surprisingly the log(a/b) is more stable that log(a) - log(b)
+
 function softmax2(MEM::Vector{Float64},X::Vector{Float64})
     lse = logsumexp(X)
     @.(MEM = (exp(X - lse)))
 end
-function alternate_gamma(k1::Int64, k2::Int64, sum1::Float64, sum2::Float64, ALPHA::Float64, MAXINNER::Int64)
-	##Also find a way to check gradient decreasing
-	γ_running = ALPHA
-	for i in 1:MAXINNER
-		γ_running[k1,k2] = ALPHA[k1, k2] + sum1*(γ_running[k1, k2]/sum(γ_running[k1,:]))
-		γ_running[k1,k2] = ALPHA[k1, k2] + sum2*(γ_running[k1, k2]/sum(γ_running[:,k2]))
-	end
-return (γ_running)
-end
+
 
 println("utils.jl loaded")
