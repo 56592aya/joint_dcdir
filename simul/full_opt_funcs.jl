@@ -124,15 +124,123 @@ function init_param(N_, K1_, K2_, wlen1_, wlen2_,V1_, V2_, beta1_, beta2_)
 			Corp1, Corp2
 end
 
+function compute_ℒ_b1_full(K1, V1, beta1, b1)
+	Beta1  = beta1 .* ones(Float64, (K1, V1))
+	ℒ = 0.0
+	for k in 1:K1
+		ℒ += SpecialFunctions.lgamma(sum(Beta1[k,:]))
+		ℒ -= SpecialFunctions.lgamma(sum(b1[k,:]))
+		for v in 1:V1
+			ℒ -= SpecialFunctions.lgamma(Beta1[k,v])
+			ℒ += SpecialFunctions.lgamma(b1[k,v])
+			ℒ += (Beta1[k,v]-b1[k,v]) * (digamma_(b1[k,v]) - digamma_(sum(b1[k,:])))
+		end
+	end
+	return ℒ
+end
 
-function compute_ℒ_γ_full()
-	ℒ_γ = 0.0
+function compute_ℒ_b2_full(K2, V2, beta2, b2)
+	Beta2  = beta2 .* ones(Float64, (K2, V2))
+	ℒ = 0.0
+	for k in 1:K2
+		ℒ += SpecialFunctions.lgamma(sum(Beta2[k,:]))
+		ℒ -= SpecialFunctions.lgamma(sum(b2[k,:]))
+		for v in 1:V2
+			ℒ -= SpecialFunctions.lgamma(Beta2[k,v])
+			ℒ += SpecialFunctions.lgamma(b2[k,v])
+			ℒ += (Beta2[k,v]-b2[k,v]) * (digamma_(b2[k,v]) - digamma_(sum(b2[k,:])))
+		end
+	end
+	return ℒ
+end
 
+function compute_ℒ_γ_full(N, Alpha, γ, K1, K2)
+	ℒ = 0.0
+	for i in 1:N
+		ℒ += SpecialFunctions.lgamma(sum(Alpha))
+		ℒ -= SpecialFunctions.lgamma(sum(γ[i]))
+		for k1 in 1:K1
+			for k2 in 1:K2
+				ℒ -= SpecialFunctions.lgamma(Alpha[k1, k2])
+				ℒ += SpecialFunctions.lgamma(γ[i][k1, k2])
+				ℒ += (Alpha[k1, k2] - γ[i][k1, k2])*(digamma_(γ[i][k1,k2]) - digamma_(sum(γ[i])))
+			end
+		end
+	end
+	return ℒ
+end
+
+function compute_ℒ_phi1_full(N, Corp1, K1, K2, phi1, γ)
+	ℒ = 0.0
+	for i in 1:N
+		for (w, val) in enumerate(Corp1[i])
+			for k1 in 1:K1
+				for k2 in 1:K2
+					ℒ += phi1[i][w,k1, k2]*(digamma_(γ[i][k1,k2]) - digamma_(sum(γ[i])))
+					ℒ -= phi1[i][w,k1, k2]*(log(phi1[i][w,k1, k2]))
+				end
+			end
+		end
+	end
+	return ℒ
+end
+
+function compute_ℒ_phi2_full(N, Corp2, K1, K2, phi2, γ)
+	ℒ = 0.0
+	for i in 1:N
+		for (w, val) in enumerate(Corp2[i])
+			for k1 in 1:K1
+				for k2 in 1:K2
+					ℒ += phi2[i][w,k1, k2]*(digamma_(γ[i][k1,k2]) - digamma_(sum(γ[i])))
+					ℒ -= phi2[i][w,k1, k2]*(log(phi2[i][w,k1, k2]))
+				end
+			end
+		end
+	end
+	return ℒ
+end
+
+function compute_ℒ_y1_full(N, Corp1, K1, phi1, b1)
+	ℒ = 0.0
+	for i in 1:N
+		for (w, val) in enumerate(Corp1[i])
+			v = parse(Int64, val[5:end])
+			for k1 in 1:K1
+				ℒ += sum(phi1[i][w, k1, :])*(digamma_(b1[k1,v]) - digamma_(sum(b1[k1,:])))
+			end
+		end
+	end
+	return ℒ
+end
+
+function compute_ℒ_y2_full(N, Corp2, K2, phi2, b2)
+	ℒ = 0.0
+	for i in 1:N
+		for (w, val) in enumerate(Corp2[i])
+			v = parse(Int64, val[5:end])
+			for k2 in 1:K2
+				ℒ += sum(phi2[i][w, :, k2])*(digamma_(b2[k2,v]) - digamma_(sum(b2[k2,:])))
+			end
+		end
+	end
+	return ℒ
+end
+
+function compute_ℒ_full(N,K1,K2,V1,V2,beta1,beta2,b1,b2,
+						Alpha,γ,Corp1,Corp2,phi1,phi2)
 	"""
 	Computes 	ELBO for
 	Returns 	the ELBO()
 	"""
-    return ℒ_γ
+	ℒ = 0.0
+	ℒ += compute_ℒ_b1_full(K1, V1, beta1, b1)
+	ℒ += compute_ℒ_b2_full(K2, V2, beta2, b2)
+	ℒ += compute_ℒ_γ_full(N, Alpha, γ, K1, K2)
+	ℒ += compute_ℒ_phi1_full(N, Corp1, K1, K2, phi1, γ)
+	ℒ += compute_ℒ_phi2_full(N, Corp2, K1, K2, phi2, γ)
+	ℒ += compute_ℒ_y1_full(N, Corp1, K1, phi1, b1)
+	ℒ += compute_ℒ_y2_full(N, Corp2, K2, phi2, b2)
+    return ℒ
 end
 
 function compute_ℒ_γ_atom(K1_, K2_, k1_, k2_, Alpha_, γ_, phi1_, phi2_)##gamma  and phis are i-indexed
@@ -315,7 +423,7 @@ function estimate_B(b)
 	return res
 end
 
-function updates()
+# function updates()
 
 	##init param
 	beta1 = 0.08
@@ -334,7 +442,7 @@ function updates()
 			Vocab1 ,Vocab2, Beta1, Beta2,
 			Corp1, Corp2 = init_param(N, K1, K2,wlen1, wlen2,V1, V2, beta1, beta2)
 
-	MAX_ITER = 200
+	MAX_ITER = 2000
 
 
 	for iter in 1:MAX_ITER
@@ -356,13 +464,17 @@ function updates()
 		for k in 1:K2
 			optimize_b_vec!(N, b2, beta2, k, phi2, 2, Corp2, V2)
 		end
+		if (iter % 10 == 0) || (iter == 1)
+			println(compute_ℒ_full(N,K1,K2,V1,V2,beta1,beta2,b1,b2,
+								Alpha,γ,Corp1,Corp2,phi1,phi2))
+		end
 	end
 	theta_est = estimate_thetas(γ)
 	B1_est = estimate_B(b1)
 	B2_est = estimate_B(b2)
 	Plots.heatmap(theta_est[2])
 	Plots.heatmap(Theta[2])
-end
+# end
 sum(theta_est[6], dims=2)[:,1]
 sum(theta_est[6], dims=1)[1,:]
 Theta1[6]
