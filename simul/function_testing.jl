@@ -23,6 +23,7 @@ end
 
 lgamma(5000)
 println(" For small values lgamma of SpecialFunctions seems safer and better behaved")
+
 function draw_dir(K, a_scalar)
     draw_dir_diff(a_scalar.*ones(Float64, K))
 end
@@ -33,12 +34,15 @@ function draw_dir_diff(a_vec)
     title="a_vec = $a_vec")
 end
 K=500
-draw_dir(K,1.0/(K^(0.8)))
-
 a_scalar = 1.0/(K^(0.8))
-K=500
-a_vec = a_scalar.*ones(Float64, K)
-K = length(a_vec)
-ρ = Distributions.rand(Distributions.Dirichlet(a_vec), 1)[:,1]
-Ρ = convert(Matrix{Float64}, transpose(reshape(ρ, (25, 20))))
-Plots.heatmap(Ρ)
+draw_dir(K,a_scalar)
+a_vec = normalize([a_scalar for k in 1:K],1)
+draw_dir_diff(a_vec)
+
+
+# K=500
+# a_vec = a_scalar.*ones(Float64, K)
+# K = length(a_vec)
+# ρ = Distributions.rand(Distributions.Dirichlet(a_vec), 1)[:,1]
+# Ρ = convert(Matrix{Float64}, transpose(reshape(ρ, (25, 20))))
+# Plots.heatmap(Ρ)

@@ -10,16 +10,20 @@ function create_Alpha(K1, K2)
     res = Float64[]
     while length(res) < K1*K2
         r = rand(Normal(1.0/(K1*K2)^.8, 1.0/(K1*K2)^1.6))
+		# r = 1.0/(K1*K2)^.8
+        # r = rand(Normal(1e-7, 1e-8))
+		# r=1.0
         if r > 0
             res = vcat(res, r)
         else
 			continue
 		end
     end
-	res = normalize(res, 1)
+	# res = normalize(res, 1)
     Res = convert(Matrix{Float64}, transpose(reshape(res, (K2, K1))))
     return res, Res
 end
+# create_Alpha(K1, K2)
 
 
 function create_Theta(vec, N, K1, K2)
@@ -36,14 +40,17 @@ function create_Theta(vec, N, K1, K2)
     return res, Res, Res1, Res2
 end
 
-function create_B(beta, V, K)
+function create_B(beta_prior, V, K)
 	"""
 	Creates 	B for all topics
 				Given the Dirichlet prior beta
 	Used in 	DGP
 	Returns 	K*V matrix of vocab dist B
 	"""
-	B = convert(Matrix{Float64},transpose(rand(Distributions.Dirichlet(repeat([beta], V)),K)))
+	B = zeros(Float64, (K, V))
+	for k in 1:K
+		B[k,:] = rand(Distributions.Dirichlet(beta_prior[k,:]))
+	end
     return B
 end
 
@@ -54,7 +61,7 @@ function create_doc(wlen, topic_dist_vec ,term_topic_dist, Vocab, mode_, K1, K2)
 	Used in 	DGP
 	Returns 	A doc vector of its words
 	"""
-	doc = String[]
+	doc = Int64[]
 	for i in 1:wlen
 		topic_temp = rand(Distributions.Categorical(topic_dist_vec))
 		row = Int64(ceil(topic_temp/K2))
@@ -68,7 +75,7 @@ end
 
 
 function create_corpux(N, Theta_vec, B, K1, K2, wlens, Vocab, mode_)
-	corpus = [String[] for i in 1:N]
+	corpus = [Int64[] for i in 1:N]
 	for i in 1:N
 		doc  = create_doc(wlens[i], Theta_vec[i,:] ,B, Vocab, mode_, K1, K2)
 		corpus[i] = vcat(corpus[i], doc)
@@ -79,7 +86,7 @@ end
 function prepare_data()
 end
 
-function init_param(N_, K1_, K2_, wlen1_, wlen2_,V1_, V2_, beta1_, beta2_)
+function init_param(N_, K1_, K2_, wlen1_, wlen2_,V1_, V2_, beta1_prior_, beta2_prior_)
 	"""
 	Initialize the relevant variables/params
 	Set 	N, K1, K2, wlen1, wlen2
@@ -100,22 +107,24 @@ function init_param(N_, K1_, K2_, wlen1_, wlen2_,V1_, V2_, beta1_, beta2_)
 	fixed_len1 = wlen1_ .*ones(Int64, N)
 	fixed_len2 = wlen2_ .*ones(Int64, N)
 
-	phi1 = [zeros(Float64, (fixed_len1[i],K1, K2)) for i in 1:N]
-	phi2 = [zeros(Float64, (fixed_len2[i],K1, K2)) for i in 1:N]
+	phi1 = [(1.0/(K1*K2)) .* ones(Float64, (fixed_len1[i],K1, K2)) for i in 1:N]
+	phi2 = [(1.0/(K1*K2)) .* ones(Float64, (fixed_len2[i],K1, K2)) for i in 1:N]
 
 	γ = [zeros(Float64, K1, K2) for i in 1:N]
 	for i in 1:N
 		γ[i] = deepcopy(Alpha)
 	end
-	Vocab1 = ["term$x" for x in 1:V1_]
-	Vocab2 = ["term$x" for x in 1:V2_]
+	# Vocab1 = ["term$x" for x in 1:V1_]
+	# Vocab2 = ["term$x" for x in 1:V2_]
+	Vocab1 = collect(1:V1_)
+	Vocab2 = collect(1:V2_)
 
-	Beta1 = create_B(beta1_,V1_, K1_)
-	Beta2 = create_B(beta2_,V2_, K2_)
+	Beta1 = create_B(beta1_prior_,V1_, K1_)
+	Beta2 = create_B(beta2_prior_,V2_, K2_)
 	Corp1 = create_corpux(N, Theta_vec, Beta1, K1, K2, fixed_len1, Vocab1, 1)
 	Corp2 = create_corpux(N, Theta_vec, Beta2, K1, K2, fixed_len2, Vocab2, 2)
-	b1 = ones(Float64, (K1_, V1_)) .* beta1_
-	b2 = ones(Float64, (K2_, V2_)) .* beta2_
+	b1 = deepcopy(beta1_prior)
+	b2 = deepcopy(beta2_prior)
 	return N, K1, K2, alpha_vec, Alpha,
 			Theta_vec, Theta, Theta1, Theta2,
 			fixed_len1, fixed_len2,
@@ -124,31 +133,31 @@ function init_param(N_, K1_, K2_, wlen1_, wlen2_,V1_, V2_, beta1_, beta2_)
 			Corp1, Corp2
 end
 
-function compute_ℒ_b1_full(K1, V1, beta1, b1)
-	Beta1  = beta1 .* ones(Float64, (K1, V1))
+function compute_ℒ_b1_full(K1, V1, beta1_prior, b1)
+	# Beta1  = beta1 .* ones(Float64, (K1, V1))
 	ℒ = 0.0
 	for k in 1:K1
-		ℒ += SpecialFunctions.lgamma(sum(Beta1[k,:]))
+		# ℒ += SpecialFunctions.lgamma(sum(Beta1[k,:]))
 		ℒ -= SpecialFunctions.lgamma(sum(b1[k,:]))
 		for v in 1:V1
-			ℒ -= SpecialFunctions.lgamma(Beta1[k,v])
+			# ℒ -= SpecialFunctions.lgamma(Beta1[k,v])
 			ℒ += SpecialFunctions.lgamma(b1[k,v])
-			ℒ += (Beta1[k,v]-b1[k,v]) * (digamma_(b1[k,v]) - digamma_(sum(b1[k,:])))
+			ℒ += (beta1_prior[k,v]-b1[k,v]) * (digamma_(b1[k,v]) - digamma_(sum(b1[k,:])))
 		end
 	end
 	return ℒ
 end
 
-function compute_ℒ_b2_full(K2, V2, beta2, b2)
-	Beta2  = beta2 .* ones(Float64, (K2, V2))
+function compute_ℒ_b2_full(K2, V2, beta2_prior, b2)
+	# Beta2  = beta2 .* ones(Float64, (K2, V2))
 	ℒ = 0.0
 	for k in 1:K2
-		ℒ += SpecialFunctions.lgamma(sum(Beta2[k,:]))
+		# ℒ += SpecialFunctions.lgamma(sum(Beta2[k,:]))
 		ℒ -= SpecialFunctions.lgamma(sum(b2[k,:]))
 		for v in 1:V2
-			ℒ -= SpecialFunctions.lgamma(Beta2[k,v])
+			# ℒ -= SpecialFunctions.lgamma(Beta2[k,v])
 			ℒ += SpecialFunctions.lgamma(b2[k,v])
-			ℒ += (Beta2[k,v]-b2[k,v]) * (digamma_(b2[k,v]) - digamma_(sum(b2[k,:])))
+			ℒ += (beta2_prior[k,v]-b2[k,v]) * (digamma_(b2[k,v]) - digamma_(sum(b2[k,:])))
 		end
 	end
 	return ℒ
@@ -157,11 +166,11 @@ end
 function compute_ℒ_γ_full(N, Alpha, γ, K1, K2)
 	ℒ = 0.0
 	for i in 1:N
-		ℒ += SpecialFunctions.lgamma(sum(Alpha))
+		# ℒ += SpecialFunctions.lgamma(sum(Alpha))
 		ℒ -= SpecialFunctions.lgamma(sum(γ[i]))
 		for k1 in 1:K1
 			for k2 in 1:K2
-				ℒ -= SpecialFunctions.lgamma(Alpha[k1, k2])
+				# ℒ -= SpecialFunctions.lgamma(Alpha[k1, k2])
 				ℒ += SpecialFunctions.lgamma(γ[i][k1, k2])
 				ℒ += (Alpha[k1, k2] - γ[i][k1, k2])*(digamma_(γ[i][k1,k2]) - digamma_(sum(γ[i])))
 			end
@@ -204,9 +213,9 @@ function compute_ℒ_y1_full(N, Corp1, K1, phi1, b1)
 	ℒ = 0.0
 	for i in 1:N
 		for (w, val) in enumerate(Corp1[i])
-			v = parse(Int64, val[5:end])
+			# v = parse(Int64, val[5:end])
 			for k1 in 1:K1
-				ℒ += sum(phi1[i][w, k1, :])*(digamma_(b1[k1,v]) - digamma_(sum(b1[k1,:])))
+				ℒ += sum(phi1[i][w, k1, :])*(digamma_(b1[k1,val]) - digamma_(sum(b1[k1,:])))
 			end
 		end
 	end
@@ -217,24 +226,24 @@ function compute_ℒ_y2_full(N, Corp2, K2, phi2, b2)
 	ℒ = 0.0
 	for i in 1:N
 		for (w, val) in enumerate(Corp2[i])
-			v = parse(Int64, val[5:end])
+			# v = parse(Int64, val[5:end])
 			for k2 in 1:K2
-				ℒ += sum(phi2[i][w, :, k2])*(digamma_(b2[k2,v]) - digamma_(sum(b2[k2,:])))
+				ℒ += sum(phi2[i][w, :, k2])*(digamma_(b2[k2,val]) - digamma_(sum(b2[k2,:])))
 			end
 		end
 	end
 	return ℒ
 end
 
-function compute_ℒ_full(N,K1,K2,V1,V2,beta1,beta2,b1,b2,
+function compute_ℒ_full(N,K1,K2,V1,V2,beta1_prior,beta2_prior,b1,b2,
 						Alpha,γ,Corp1,Corp2,phi1,phi2)
 	"""
 	Computes 	ELBO for
 	Returns 	the ELBO()
 	"""
 	ℒ = 0.0
-	ℒ += compute_ℒ_b1_full(K1, V1, beta1, b1)
-	ℒ += compute_ℒ_b2_full(K2, V2, beta2, b2)
+	ℒ += compute_ℒ_b1_full(K1, V1, beta1_prior, b1)
+	ℒ += compute_ℒ_b2_full(K2, V2, beta2_prior, b2)
 	ℒ += compute_ℒ_γ_full(N, Alpha, γ, K1, K2)
 	ℒ += compute_ℒ_phi1_full(N, Corp1, K1, K2, phi1, γ)
 	ℒ += compute_ℒ_phi2_full(N, Corp2, K1, K2, phi2, γ)
@@ -243,72 +252,15 @@ function compute_ℒ_full(N,K1,K2,V1,V2,beta1,beta2,b1,b2,
     return ℒ
 end
 
-function compute_ℒ_γ_atom(K1_, K2_, k1_, k2_, Alpha_, γ_, phi1_, phi2_)##gamma  and phis are i-indexed
-	"""
-	Computes 	ELBO for a gamma cell
-	Returns 	the ELBO(gamma_k'k)
-	"""
-    ℒ_γ = 0.0
-    ℒ_γ += (Alpha_[k1_, k2_]-γ_[k1_, k2_])*(digamma_(γ_[k1_, k2_]))
-    for l1 in 1:K1_
-        for l2 in 1:K2_
-            ℒ_γ -= (Alpha_[l1, l2]-γ_[l1, l2])*digamma_(sum(γ_))
-        end
-    end
-    ℒ_γ -= SpecialFunctions.lgamma(sum(γ_))
-    ℒ_γ += (SpecialFunctions.lgamma(γ_[k1_, k2_]))
-
-    for w in 1:size(phi1_,1)
-        ℒ_γ += phi1_[w,k1_, k2_] * (digamma_(γ_[k1_,k2_]))
-	end
-    ℒ_γ -=  size(phi1_,1) * digamma_(sum(γ_))
-
-	for w in 1:size(phi2_,1)
-        ℒ_γ += phi2_[w,k1_, k2_] * (digamma_(γ_[k1_,k2_]))
-	end
-    ℒ_γ -=  size(phi2_,1) * digamma_(sum(γ_))
-    return ℒ_γ
-end
-function compute_∇ℒ_γ_atom(K1_, K2_, k1_, k2_,Alpha_,γ_,phi1_, phi2_) # indexed at i
-	"""
-	Computes 	the gradient of ELBo w.r.t a gamma cell
-	Returns 	the gradient and its parts
-	"""
-    rest = 0.0
-    rest += (Alpha_[k1_, k2_]-γ_[k1_, k2_])*(trigamma_(γ_[k1_, k2_]))
-    for w in 1:size(phi1_,1)
-        rest += phi1_[w, k1_, k2_]*trigamma_(γ_[k1_, k2_])
-    end
-    for w in 1:size(phi2_,1)
-        rest += phi2_[w, k1_, k2_]*trigamma_(γ_[k1_, k2_])
-    end
-
-    special_term = 0.0
-    for l1 in 1:K1_
-        for l2 in 1:K2_
-            special_term += (Alpha_[l1, l2]-γ_[l1, l2])
-        end
-    end
-    special_term += (size(phi1_,1)+size(phi2_,1))*1.0
-
-	special_term *= -trigamma_(sum(γ_))
-    ∇_γ = rest + special_term
-    return ∇_γ , rest , special_term
-end
-function optimize_γ_ind(K1_, K2_, Alpha_,phi1_, phi2_)
-	"""
-	Optimize 	individual i's gamma for all its cells
-	Returns 	optimized update for gamma
-	"""
-	γ_running_new =zeros(Float64, (K1_, K2_))
-	for k1 in 1:K1_
-		for k2 in 1:K2_
-			sum1 = sum([phi1_[w, k1, k2] for w in 1:size(phi1_,1)])
-			sum2 = sum([phi2_[w, k1, k2] for w in 1:size(phi2_,1)])
-			γ_running_new[k1,k2] = Alpha_[k1, k2] + sum1 + sum2
+function optimize_γ!(N, K1_, K2_, Alpha_,γ_, phi1_, phi2_)
+	for i in 1:N
+		for k1 in 1:K1_
+			for k2 in 1:K2_
+				γ_[i][k1, k2] = Alpha_[k1 ,k2] +
+								sum(phi1_[i][:,k1, k2])+ sum(phi2_[i][:,k1, k2])
+			end
 		end
 	end
-	return γ_running_new
 end
 
 function update_γ(N_, K1_, K2_, γ_, Alpha_, phi1_, phi2_)
@@ -329,13 +281,8 @@ function update_γ(N_, K1_, K2_, γ_, Alpha_, phi1_, phi2_)
 	end
 	return norm_grad_results
 end
-#### Each var param has these functions
-#### 1)compute_ℒ_x_atom
-#### 2)compute_∇ℒ_x_atom (not necessary if deterministic but for checks)
-#### 3)optimize_x
-#### 4)update_x (if deterministic can be coerced with 3)
 
-function compute_ℒ_b_atom(beta, b, k, K, v, V_, doc, phi, dim)
+function compute_ℒ_b_atom(beta_prior, b, k, K, v, V_, doc, phi, dim)
 
 	dig = digamma_(b[k,v])
 	dig_sum = digamma_(sum(b[k,:]))
@@ -343,23 +290,23 @@ function compute_ℒ_b_atom(beta, b, k, K, v, V_, doc, phi, dim)
 	lg_sum = SpecialFunctions.lgamma_(sum(b[k,:]))
 
 	ℒ_b = 0.0
-	ℒ_b += (beta[k] - b[k,v]) * dig
+	ℒ_b += (beta_prior[k,v] - b[k,v]) * dig
 
 	for v_ in 1:V_
-		ℒ_b -= (beta[k] - b[k,v_]) * dig_sum
+		ℒ_b -= (beta_prior[k,v] - b[k,v_]) * dig_sum
 	end
 
-	ℒ_b += (beta[k] - b[k,v_]) * lg
+	ℒ_b += (beta_prior[k,v] - b[k,v_]) * lg
 
 	for i in 1:N
 		for (w, val) in enumerate(doc)
-			V_val = parse(Int64, val[5:end])
+			# V_val = parse(Int64, val[5:end])
 			if dim == 1
 				ℒ_b -= sum(phi[i][w,k, :])*dig_sum
 			else
 				ℒ_b -= sum(phi[i][w,:, k])*dig_sum
 			end
-			if V_val == v
+			if val == v
 				if dim == 1
 					ℒ_b += sum(phi[i][w,k, :])*dig
 				else
@@ -370,16 +317,16 @@ function compute_ℒ_b_atom(beta, b, k, K, v, V_, doc, phi, dim)
 	end
 end
 
-function optimize_b_vec!(N, b, beta, k, phi, dim, Corp, V)
-	bk = beta .* ones(Float64, V)
+function optimize_b_vec!(N, b, beta_prior, k, phi, dim, Corp, V)
+	bk = beta_prior[k,:]
 	for i in 1:N
 		doc = Corp[i]
 		for (w, val) in enumerate(doc)
-			v = parse(Int64, val[5:end])
+			# v = parse(Int64, val[5:end])
 			if dim == 1
-				bk[v] += sum(phi[i][w,k, :])
+				bk[doc[w]] += sum(phi[i][w,k, :])
 			else
-				bk[v] += sum(phi[i][w,:, k])
+				bk[doc[w]] += sum(phi[i][w,:, k])
 			end
 		end
 	end
@@ -388,7 +335,7 @@ end
 
 
 function optimize_phi_iw(phi_, γ_,b_, K1_, K2_, V, w, doc, dim)
-	v = parse(Int64, doc[w][5:end])
+	v = doc[w]
 	S = zeros(Float64, K1*K2)
 	for k1 in 1:K1_
 		for k2 in 1:K2_
@@ -402,7 +349,8 @@ function optimize_phi_iw(phi_, γ_,b_, K1_, K2_, V, w, doc, dim)
 		end
 	end
 	S = deepcopy(softmax(S))
-	phi_ = convert(Matrix{Float64}, transpose(reshape(S, (K2_, K1_))))
+
+	phi_ = deepcopy(convert(Matrix{Float64}, transpose(reshape(S, (K2_, K1_)))))
 	return phi_
 end
 
@@ -426,46 +374,56 @@ end
 # function updates()
 
 	##init param
-	beta1 = 0.08
-	beta2 = 0.07
 	wlen1 = 50
 	wlen2 = 60
-	N = 1000
+	N = 65
 	K1 = 3
 	K2 = 5
 	V1 = 200
 	V2 = 300
+	beta1_prior = 1.0/V1 .*ones(Float64, (K1, V1))
+	beta2_prior = 1.0/V2 .*ones(Float64, (K2, V2))
+	# phi1[1][1,:,:]
+	# phi1[2][1,:,:]
+	# phi2[1][1,:,:]
+	# phi2[2][1,:,:]
+
 	N, K1, K2, alpha_vec, Alpha,
 			Theta_vec, Theta, Theta1, Theta2,
 			fixed_len1, fixed_len2,
 			phi1, phi2, γ, b1, b2,
 			Vocab1 ,Vocab2, Beta1, Beta2,
-			Corp1, Corp2 = init_param(N, K1, K2,wlen1, wlen2,V1, V2, beta1, beta2)
+			Corp1, Corp2 = init_param(N, K1, K2,wlen1, wlen2,V1, V2, beta1_prior, beta2_prior)
 
-	MAX_ITER = 2000
+	MAX_ITER = 1000
 
 
 	for iter in 1:MAX_ITER
+
 		for i in 1:N
+
 			doc1 = Corp1[i]
 			doc2 = Corp2[i]
+
 			for (w, val) in enumerate(doc1)
-				phi1[i][w,:, :] = optimize_phi_iw(phi1[i], γ[i],b1, K1, K2, V1, w, doc1, 1)
+				phi1[i][w,:, :] = optimize_phi_iw(phi1[i], γ[i],b1, K1, K2, V1, w,doc1, 1)
 			end
+			# phi1[i][:,:,:]
 			for (w,val) in enumerate(doc2)
 				phi2[i][w,:, :] = optimize_phi_iw(phi2[i], γ[i],b2, K1, K2, V2, w, doc2, 2)
 			end
 		end
-		println(iter)
-		update_γ(N, K1, K2, γ, Alpha, phi1, phi2)
+		# println(iter)
+
+		optimize_γ!(N, K1, K2, Alpha,γ, phi1, phi2)
 		for k in 1:K1
-			optimize_b_vec!(N, b1, beta1, k, phi1, 1, Corp1, V1)
+			optimize_b_vec!(N, b1, beta1_prior, k, phi1, 1, Corp1, V1)
 		end
 		for k in 1:K2
-			optimize_b_vec!(N, b2, beta2, k, phi2, 2, Corp2, V2)
+			optimize_b_vec!(N, b2, beta2_prior, k, phi2, 2, Corp2, V2)
 		end
 		if (iter % 10 == 0) || (iter == 1)
-			println(compute_ℒ_full(N,K1,K2,V1,V2,beta1,beta2,b1,b2,
+			println(compute_ℒ_full(N,K1,K2,V1,V2,beta1_prior,beta2_prior,b1,b2,
 								Alpha,γ,Corp1,Corp2,phi1,phi2))
 		end
 	end
@@ -475,7 +433,21 @@ end
 	Plots.heatmap(theta_est[2])
 	Plots.heatmap(Theta[2])
 # end
+
+
+# i, k1, k2 = 1, 2, 1
+# sum(phi1[i][:,k1,k2]) + sum(phi2[i][:,k1,k2]) + Alpha[k1,k2]
+
+
+x = [(digamma_(γ[2][k1, k2]) - digamma(sum(γ[2]))) for k1 in 1:K1 for k2 in 1:K2]
+y = convert(Matrix{Float64}, transpose(reshape(softmax(x), (K2, K1))))
+Plots.heatmap(Theta[2])
+Plots.heatmap(y)
 sum(theta_est[6], dims=2)[:,1]
+sum(y, dims=2)[:,1]
+Theta1[1]
 sum(theta_est[6], dims=1)[1,:]
 Theta1[6]
 Theta2[6]
+Plots.plot(Beta2[5,:])
+Plots.plot(b2[5,:])
