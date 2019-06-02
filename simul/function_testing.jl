@@ -36,9 +36,11 @@ end
 K=500
 a_scalar = 1.0/(K^(0.8))
 draw_dir(K,a_scalar)
+
 a_vec = normalize([a_scalar for k in 1:K],1)
 draw_dir_diff(a_vec)
 
+draw_dir(K,sqrt(0.001))
 
 # K=500
 # a_vec = a_scalar.*ones(Float64, K)
