@@ -73,6 +73,20 @@ function logsumexp(X::Vector{Float64})
     end
     log(r) + alpha
 end
+function logsumexp(X::Matrix{Float64})
+    alpha = -Inf;r = 0.0;
+    @inbounds for x in X
+        if x <= alpha
+            r += exp(x - alpha)
+        else
+            r *= exp(alpha - x)
+            r += 1.0
+            alpha = x
+        end
+    end
+    log(r) + alpha
+end
+
 
 function logsumexp(X::Float64, Y::Float64)
     alpha = -Inf;r = 0.0;
@@ -96,11 +110,16 @@ function softmax(X::Vector{Float64})
     lse = logsumexp(X)
     return  @.(exp(X-lse))
 end
+function softmax(X::Matrix{Float64})
+    lse = logsumexp(X)
+    return  @.(exp(X-lse))
+end
 
 function softmax2(MEM::Vector{Float64},X::Vector{Float64})
     lse = logsumexp(X)
     @.(MEM = (exp(X - lse)))
 end
 
+# sum(softmax([1.0 3.0; 2.0 4.0]))
 
 println("utils.jl loaded")

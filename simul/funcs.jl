@@ -126,9 +126,10 @@ function init_params(K1_::Int64, K2_::Int64, beta1_prior_, beta2_prior_,
 	wlens1 = [length(corp1_[i]) for i in 1:N]
 	wlens2 = [length(corp2_[i]) for i in 1:N]
 	#priors
-	(alpha_vec, Alpha) = alpha_prior_ .* (ones(Float64, K1*K2) , ones(Float64, (K1, K2)))
-	beta1 = ones(Float64, (K1,V1_)) .* beta1_prior_
-	beta2 = ones(Float64, (K2,V2_)) .* beta2_prior_
+	alpha_vec = rand(Uniform(alpha_prior_/2,alpha_prior_*2), (K1*K2)) .* ones(Float64, K1*K2)
+	Alpha =  permutedims(reshape(alpha_vec, (K2, K1)), (2,1))
+	beta1 = ones(Float64, (K1,V1_)) .* rand(Uniform(beta1_prior_/4, beta1_prior_*2), K1)
+	beta2 = ones(Float64, (K2,V2_)) .* rand(Uniform(beta2_prior_/4, beta2_prior_*2), K2)
 	#variational params
 	phi1 = [(1.0/(K1*K2)) .* ones(Float64, (wlens1[i], K1, K2)) for i in 1:N]
 	phi2 = [(1.0/(K1*K2)) .* ones(Float64, (wlens2[i], K1, K2)) for i in 1:N]
@@ -138,11 +139,13 @@ function init_params(K1_::Int64, K2_::Int64, beta1_prior_, beta2_prior_,
 	end
 	b1 = deepcopy(beta1)
 	b2 = deepcopy(beta2)
-
+	Elog_B1 = zeros(Float64, (K1, V1))
+	Elog_B2 = zeros(Float64, (K2, V2))
+	Elog_Theta = zeros(Float64, (N, K1, K2))
 	## Also make sure vocab is the ones used.
 	return N, K1, K2, wlens1, wlens2,
 			alpha_vec, Alpha,beta1, beta2,
-			phi1, phi2, γ, b1, b2
+			phi1, phi2, γ, b1, b2,Elog_B1, Elog_B2,Elog_Theta
 end
 #####################   ESTIMATE  FUNNCS   ####################
 """
@@ -150,8 +153,11 @@ I use this because I want to feed a matrix
 """
 function estimate_thetas(gamma)
 	theta_est = deepcopy(gamma)
+	# theta_est = deepcopy(γ)
 	for i in 1:length(theta_est)
+		i = 2
 		s = sum(gamma[i])
+		# s = sum(γ[i])
 		theta_est[i] ./= s
 	end
 	return theta_est
@@ -166,7 +172,18 @@ function estimate_B(b_)
 	end
 	return res
 end
-
+function update_Elogtheta!(γ_, Elog_)
+	for i in 1:N
+		digsum = digamma_(sum(γ_[i]))
+		Elog_[i,:,:] .=  digamma_.(γ_[i]) .- digsum
+	end
+end
+function update_Elogb!(b_, Elog_)
+	for k in 1:size(Elog_,1)
+		digsum = digamma_(sum(b_[k,:]))
+		Elog_[k,:] .=  digamma_.(b_[k,:]) .- digsum
+	end
+end
 ###########  ELBO  ###############
 """
 Returns the full elbo contribution of b
@@ -277,6 +294,7 @@ function compute_ℒ_full(N,K1,K2,V1,V2,beta1_prior,beta2_prior,b1,b2,
 	ℒ += compute_ℒ_y2_full(N, Corp2, K2, phi2, b2)
     return ℒ
 end
+
 ###########   OPTIMIZATION/VAR    UPDATES   ###############
 """
 Optimize all atoms of γ
@@ -290,20 +308,30 @@ function optimize_γ!(N, K1_, K2_, Alpha_,γ_, phi1_, phi2_)
 			end
 		end
 	end
+	return γ_
 end
 """
-Optimize all b per topic
+Optimize all b1 per topic
 """
-function optimize_b_per_topic!(N, b, beta_prior, k, phi, dim, corp, V)
+function optimize_b1_per_topic!(N, b, beta_prior, k, phi, corp, V)
 	bk = beta_prior[k,:]
 	for i in 1:N
 		doc = deepcopy(corp[i])
-		for (w, val) in enumerate(doc)
-			if dim == 1
-				bk[doc[w]] += sum(phi[i][w,k, :])
-			else
-				bk[doc[w]] += sum(phi[i][w,:, k])
-			end
+		for (w,val) in enumerate(doc)
+			bk[doc[w]] += sum(phi[i][w,k, :])
+		end
+	end
+	b[k,:] .= deepcopy(bk)
+end
+"""
+Optimize all b2 per topic
+"""
+function optimize_b2_per_topic!(N, b, beta_prior, k, phi, corp, V)
+	bk = beta_prior[k,:]
+	for i in 1:N
+		doc = deepcopy(corp[i])
+		for (w,val) in enumerate(doc)
+			bk[doc[w]] += sum(phi[i][w,:, k])
 		end
 	end
 	b[k,:] .= deepcopy(bk)
@@ -311,23 +339,35 @@ end
 """
 Optimize all phi atoms
 """
-function optimize_phi_iw!(phi_, γ_,b_, K1_, K2_, V, w, doc, dim)
-	v = deepcopy(doc[w])
-	S = zeros(Float64, K1*K2)
-	for k1 in 1:K1_
-		for k2 in 1:K2_
-			idx = (k1 - 1)*K2_ + k2
-			S[idx] += (digamma_(γ_[k1, k2])) - (digamma_(sum(γ_)))
-			if dim == 1
-				S[idx] += (digamma_(b_[k1, v])) - (digamma_(sum(b_[k1,:])))
-			else
-				S[idx] += (digamma_(b_[k2, v])) - (digamma_(sum(b_[k2,:])))
-			end
-		end
+function optimize_phi1_iw!(phi_, Elog_Theta_,Elog_B1_, K1_, K2_, w, doc)
+	#####
+	v = doc[w]
+	S = zeros(Float64, (K1_,K2_))
+	S .+= Elog_Theta_[:,:]
+	for k in 1:K2_
+		S[:,k] .+= Elog_B1_[:,v]   #add vector to each row
 	end
 	S = deepcopy(softmax(S))
 	phi_ = deepcopy(permutedims(reshape(S, (K2, K1)), (2,1)))
 	return phi_
 end
+
+function optimize_phi2_iw!(phi_, Elog_Theta_,Elog_B2_, K1_, K2_, w, doc)
+	#####
+	v = doc[w]
+
+	S = zeros(Float64, (K1_,K2_))
+
+	S .+= Elog_Theta_[:,:]
+	for k in 1:K1_
+		S[k,:] .+= Elog_B2_[:,v]   #add vector to each row
+	end
+
+	S = deepcopy(softmax(S))
+	phi_ = deepcopy(permutedims(reshape(S, (K2, K1)), (2,1)))
+	return phi_
+end
+
+
 
 println("All funcs are loaded")
