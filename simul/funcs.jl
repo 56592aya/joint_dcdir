@@ -133,10 +133,11 @@ function init_params(K1_::Int64, K2_::Int64, beta1_prior_, beta2_prior_,
 	#variational params
 	phi1 = [(1.0/(K1*K2)) .* ones(Float64, (wlens1[i], K1, K2)) for i in 1:N]
 	phi2 = [(1.0/(K1*K2)) .* ones(Float64, (wlens2[i], K1, K2)) for i in 1:N]
-	γ = [zeros(Float64, (K1, K2)) for i in 1:N]
-	for i in 1:N
-		γ[i] = deepcopy(Alpha)
-	end
+	γ = [ones(Float64, (K1, K2)) for i in 1:N]
+	# for i in 1:N
+	# 	# γ[i] = deepcopy(Alpha)
+	# 	# γ[i] = [ones(Float64, (K1, K2)) for i in 1:N]
+	# end
 	b1 = deepcopy(beta1)
 	b2 = deepcopy(beta2)
 	Elog_B1 = zeros(Float64, (K1, V1))
@@ -155,7 +156,6 @@ function estimate_thetas(gamma)
 	theta_est = deepcopy(gamma)
 	# theta_est = deepcopy(γ)
 	for i in 1:length(theta_est)
-		i = 2
 		s = sum(gamma[i])
 		# s = sum(γ[i])
 		theta_est[i] ./= s
@@ -178,10 +178,25 @@ function update_Elogtheta!(γ_, Elog_)
 		Elog_[i,:,:] .=  digamma_.(γ_[i]) .- digsum
 	end
 end
+function update_Elogtheta_i(γ_, Elog_)
+	digsum = digamma_(sum(γ_))
+	Elog_[:,:] .=  digamma_.(γ_) .- digsum
+	return Elog_[:,:]
+end
 function update_Elogb!(b_, Elog_)
 	for k in 1:size(Elog_,1)
 		digsum = digamma_(sum(b_[k,:]))
 		Elog_[k,:] .=  digamma_.(b_[k,:]) .- digsum
+	end
+end
+
+function gamma_converged(γ_, γ_old)
+	val = mean(abs.(γ_ .- γ_old))
+	if val < 1e-3
+		println("mean change is $val")
+		return true
+	else
+		return false
 	end
 end
 ###########  ELBO  ###############
@@ -286,12 +301,18 @@ function compute_ℒ_full(N,K1,K2,V1,V2,beta1_prior,beta2_prior,b1,b2,
 						Alpha,γ,Corp1,Corp2,phi1,phi2)
 	ℒ = 0.0
 	ℒ += compute_ℒ_b_full(K1, V1, beta1_prior, b1)
+
 	ℒ += compute_ℒ_b_full(K2, V2, beta2_prior, b2)
+
 	ℒ += compute_ℒ_γ_full(N, Alpha, γ, K1, K2)
+
 	ℒ += compute_ℒ_phi_full(N, Corp1, K1, K2, phi1, γ)
+
 	ℒ += compute_ℒ_phi_full(N, Corp2, K1, K2, phi2, γ)
+	compute_ℒ_phi_full(N, corp2, K1, K2, phi2, γ)
 	ℒ += compute_ℒ_y1_full(N, Corp1, K1, phi1, b1)
 	ℒ += compute_ℒ_y2_full(N, Corp2, K2, phi2, b2)
+
     return ℒ
 end
 
@@ -303,43 +324,80 @@ function optimize_γ!(N, K1_, K2_, Alpha_,γ_, phi1_, phi2_)
 	for i in 1:N
 		for k1 in 1:K1_
 			for k2 in 1:K2_
-				γ_[i][k1, k2] = Alpha_[k1 ,k2] +
-								sum(phi1_[i][:,k1, k2])+ sum(phi2_[i][:,k1, k2])
+				γ_[i][k1, k2] = Alpha_[k1 ,k2] +sum(phi1_[i][:,k1, k2])+ sum(phi2_[i][:,k1, k2])
 			end
 		end
 	end
-	return γ_
+end
+###
+function optimize_γi!(K1_, K2_, Alpha_,γ_, phi1_, phi2_)
+	for k1 in 1:K1_
+		for k2 in 1:K2_
+			γ_[k1, k2] = Alpha_[k1 ,k2] + sum(phi1_[:,k1, k2])+ sum(phi2_[:,k1, k2])
+		end
+	end
 end
 """
 Optimize all b1 per topic
 """
 function optimize_b1_per_topic!(N, b, beta_prior, k, phi, corp, V)
-	bk = beta_prior[k,:]
+	bk = deepcopy(beta_prior[k,:])
 	for i in 1:N
-		doc = deepcopy(corp[i])
-		for (w,val) in enumerate(doc)
-			bk[doc[w]] += sum(phi[i][w,k, :])
+		# doc = deepcopy(corp[i])
+		for (w,val) in enumerate(corp[i])
+			bk[corp[i][w]] += sum(phi[i][w,k, :])
 		end
 	end
-	b[k,:] .= deepcopy(bk)
+	b[k,:] = bk
+end
+"""
+Optimize all b1
+"""
+function optimize_b1(N, beta_prior, phi, corp, V, K)
+	b_ = ones(Float64, (K, V)) .* beta_prior
+
+	for k in 1:K
+		for i in 1:N
+			doc = corp[i]
+			for (w,val) in enumerate(doc)
+				b_[k,val] += sum(phi[i][w,k, :])
+			end
+		end
+	end
+	return b_
 end
 """
 Optimize all b2 per topic
 """
 function optimize_b2_per_topic!(N, b, beta_prior, k, phi, corp, V)
-	bk = beta_prior[k,:]
+	bk = deepcopy(beta_prior[k,:])
 	for i in 1:N
-		doc = deepcopy(corp[i])
-		for (w,val) in enumerate(doc)
-			bk[doc[w]] += sum(phi[i][w,:, k])
+		for (w,val) in enumerate(corp[i])
+			bk[corp[i][w]] += sum(phi[i][w,:, k])
 		end
 	end
-	b[k,:] .= deepcopy(bk)
+	b[k,:] = bk
+end
+"""
+Optimize all b2
+"""
+function optimize_b2(N, beta_prior, phi, corp, V, K)
+	b_ = ones(Float64, (K, V)) .* beta_prior
+
+	for k in 1:K
+		for i in 1:N
+		doc = corp[i]
+			for (w,val) in enumerate(doc)
+				b_[k,val] += sum(phi[i][w,:,k])
+			end
+		end
+	end
+	return b_
 end
 """
 Optimize all phi atoms
 """
-function optimize_phi1_iw!(phi_, Elog_Theta_,Elog_B1_, K1_, K2_, w, doc)
+function optimize_phi1_iw(phi_, Elog_Theta_,Elog_B1_, K1_, K2_, w, doc)
 	#####
 	v = doc[w]
 	S = zeros(Float64, (K1_,K2_))
@@ -348,24 +406,24 @@ function optimize_phi1_iw!(phi_, Elog_Theta_,Elog_B1_, K1_, K2_, w, doc)
 		S[:,k] .+= Elog_B1_[:,v]   #add vector to each row
 	end
 	S = deepcopy(softmax(S))
-	phi_ = deepcopy(permutedims(reshape(S, (K2, K1)), (2,1)))
+	phi_ = S
 	return phi_
+
 end
 
-function optimize_phi2_iw!(phi_, Elog_Theta_,Elog_B2_, K1_, K2_, w, doc)
+function optimize_phi2_iw(phi_, Elog_Theta_,Elog_B2_, K1_, K2_, w, doc)
 	#####
 	v = doc[w]
 
 	S = zeros(Float64, (K1_,K2_))
-
 	S .+= Elog_Theta_[:,:]
 	for k in 1:K1_
 		S[k,:] .+= Elog_B2_[:,v]   #add vector to each row
 	end
-
 	S = deepcopy(softmax(S))
-	phi_ = deepcopy(permutedims(reshape(S, (K2, K1)), (2,1)))
+	phi_ = S
 	return phi_
+
 end
 
 
