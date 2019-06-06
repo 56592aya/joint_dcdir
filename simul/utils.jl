@@ -122,4 +122,30 @@ end
 
 # sum(softmax([1.0 3.0; 2.0 4.0]))
 
+function sort_by_argmax!(X::Matrix{Float64})
+
+	n_row=size(X,1)
+	n_col = size(X,2)
+	ind_max=zeros(Int64, n_row)
+	permuted_index = zeros(Int64, n_row)
+	for a in 1:n_row
+    	ind_max[a] = findmax(view(X,a,1:n_col))[2]
+	end
+	X_tmp = similar(X)
+	count_ = 1
+	for j in 1:maximum(ind_max)
+  		for i in 1:n_row
+    		if ind_max[i] == j
+	      		for k in 1:n_col
+	        		X_tmp[count_, k] = X[i,k]
+	      		end
+				permuted_index[count_]=i
+      			count_ += 1
+    		end
+  		end
+	end
+	# This way of assignment is important in arrays, el by el
+	X[:]=X_tmp[:]
+	X, permuted_index
+end
 println("utils.jl loaded")

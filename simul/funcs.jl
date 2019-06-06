@@ -301,15 +301,11 @@ function compute_ℒ_full(N,K1,K2,V1,V2,beta1_prior,beta2_prior,b1,b2,
 						Alpha,γ,Corp1,Corp2,phi1,phi2)
 	ℒ = 0.0
 	ℒ += compute_ℒ_b_full(K1, V1, beta1_prior, b1)
-
 	ℒ += compute_ℒ_b_full(K2, V2, beta2_prior, b2)
-
 	ℒ += compute_ℒ_γ_full(N, Alpha, γ, K1, K2)
-
 	ℒ += compute_ℒ_phi_full(N, Corp1, K1, K2, phi1, γ)
-
 	ℒ += compute_ℒ_phi_full(N, Corp2, K1, K2, phi2, γ)
-	compute_ℒ_phi_full(N, corp2, K1, K2, phi2, γ)
+	# compute_ℒ_phi_full(N, corp2, K1, K2, phi2, γ)
 	ℒ += compute_ℒ_y1_full(N, Corp1, K1, phi1, b1)
 	ℒ += compute_ℒ_y2_full(N, Corp2, K2, phi2, b2)
 
@@ -350,22 +346,7 @@ function optimize_b1_per_topic!(N, b, beta_prior, k, phi, corp, V)
 	end
 	b[k,:] = bk
 end
-"""
-Optimize all b1
-"""
-function optimize_b1(N, beta_prior, phi, corp, V, K)
-	b_ = ones(Float64, (K, V)) .* beta_prior
 
-	for k in 1:K
-		for i in 1:N
-			doc = corp[i]
-			for (w,val) in enumerate(doc)
-				b_[k,val] += sum(phi[i][w,k, :])
-			end
-		end
-	end
-	return b_
-end
 """
 Optimize all b2 per topic
 """
@@ -379,14 +360,28 @@ function optimize_b2_per_topic!(N, b, beta_prior, k, phi, corp, V)
 	b[k,:] = bk
 end
 """
-Optimize all b2
+Optimize all b1
 """
-function optimize_b2(N, beta_prior, phi, corp, V, K)
+function optimize_b1(N, beta_prior, phi, corp, K,V)
 	b_ = ones(Float64, (K, V)) .* beta_prior
-
 	for k in 1:K
 		for i in 1:N
-		doc = corp[i]
+			doc = corp[i]
+			for (w,val) in enumerate(doc)
+				b_[k,val] += sum(phi[i][w,k, :])
+			end
+		end
+	end
+	return b_
+end
+"""
+Optimize all b2
+"""
+function optimize_b2(N, beta_prior, phi, corp, K, V)
+	b_ = ones(Float64, (K, V)) .* beta_prior
+	for k in 1:K
+		for i in 1:N
+			doc = corp[i]
 			for (w,val) in enumerate(doc)
 				b_[k,val] += sum(phi[i][w,:,k])
 			end
