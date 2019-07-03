@@ -56,7 +56,7 @@ function main()
 	 		println(elbo)
 			println(iter)
 
-			if div(iter,5) > 50
+			if div(iter,5) > 200
 				elb_idx =  div(iter,5)
 				if ((ELBO[elb_idx] - ELBO[elb_idx-1]) < 0.0) && ((ELBO[elb_idx] - ELBO[elb_idx-2]) < 0.0) &&
 					((ELBO[elb_idx] - ELBO[elb_idx-3]) < 0.0)
@@ -78,9 +78,9 @@ function main()
 	B2_est = estimate_B(b2)
 	theta_est[1]
 
-	Plots.heatmap(theta_est[68][[2,3,1,5,4],[3,1,2,5,4]], yflip = true)
+	Plots.heatmap(theta_est[1002][[1,2,4,5,3],[3,4,5,1,2]], yflip = true)
 	# png("theta_est_871")
-	Plots.heatmap(Θ_truth[68], yflip = true)
+	Plots.heatmap(Θ_truth[1002], yflip = true)
 	# png("theta_true_871")
 
 	# Plots.heatmap(Alpha, yflip = true)
@@ -98,12 +98,12 @@ function main()
 	# Plots.histogram(count_V2)
 	Plots.heatmap(B1_est, yflip = true)
 	# png("B1_est_unlabeled")
-	Plots.heatmap(B1_est[[2,3,1,5,4],:], yflip = true)
+	Plots.heatmap(B1_est[[1,2,4,5,3],:], yflip = true)
 	# png("B1_est_labeled")
 	Plots.heatmap(Β1_truth, yflip = true)
 	Plots.heatmap(B2_est, yflip = true)
 	# png("B2_est_unlabeled")
-	Plots.heatmap(B2_est[[3,1,2,5,4],:], yflip = true)
+	Plots.heatmap(B2_est[[3,4,5,1,2],:], yflip = true)
 	# png("B2_est_labeled")
 	Plots.heatmap(Β2_truth, yflip = true)
 

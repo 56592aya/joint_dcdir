@@ -1,7 +1,7 @@
 
 N, K1, K2, V1, V2 = 2000, 5, 5, 200, 200
 β1_single_truth, β2_single_truth = .3, .3
-wlen1_single, wlen2_single = 20, 20
+wlen1_single, wlen2_single = 200, 200
 
 # α_truth,Α_truth, θ_truth,Θ_truth,
 #  Β1_truth, Β2_truth, β1_truth, β2_truth,
