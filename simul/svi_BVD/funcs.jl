@@ -3,11 +3,12 @@ include("dgp.jl")
 include("init.jl")
 
 
-function epoch_batches(N::Int64, mb_size::Int64)
+function epoch_batches(N::Int64, mb_size::Int64, h_map::Vector{Bool})
 	# mb_size=64
-	div_ = div(N, mb_size)
-	nb = (div_ * mb_size - N) < 0 ? div_ + 1 : div_
-	y = shuffle(collect(1:N))
+	N_ = N - sum(h_map)
+	div_ = div(N_, mb_size)
+	nb = (div_ * mb_size - N_) < 0 ? div_ + 1 : div_
+	y = shuffle(collect(1:N)[.!h_map])
 	x = [Int64[] for _ in 1:nb]
 	for n in 1:nb
 		while length(x[n]) < mb_size && !isempty(y)
@@ -168,6 +169,79 @@ function optimize_phi2_iw(phi_, Elog_Theta_,Elog_B2_, params_::CountParams, w, d
 
 end
 
-function get_lr(iter, S, κ)
-	return (S+iter)^(-κ)
+function get_lr(epoch, S, κ)
+	###Should this be epoch based or iter based?
+	return (S+epoch)^(-κ)
+end
+
+
+##### w , and v needs to be fixed in holdout ho and obs what to save probably their indices that correposnd
+function calc_theta_bar_i(obs1, obs2,Corpus1, Corpus2, i, γ, Alpha, Elog_Theta, Elog_B1,Elog_B2, count_params, phi1, phi2, w_in_phi_1, w_in_phi_2)
+
+	Elog_Theta[i,:,:] = update_Elogtheta_i(γ[i], Elog_Theta[i,:,:])
+	doc1 = deepcopy(obs1[i])
+	doc2 = deepcopy(obs2[i])
+	corp1 = deepcopy(Corpus1.Data[i])
+	corp2 = deepcopy(Corpus2.Data[i])
+	for _u in 1:3
+		if rand() > .5
+			###questionable indexes
+			for w in w_in_phi_1[i]
+				phi1[i][w,:, :] .= optimize_phi1_iw(phi1[i], Elog_Theta[i,:,:],Elog_B1, count_params, w, corp1)
+			end
+
+			for w in w_in_phi_2[i]
+				phi2[i][w,:, :] .= optimize_phi2_iw(phi2[i], Elog_Theta[i,:,:],Elog_B2, count_params, w, corp2)
+			end
+		else
+			for w in w_in_phi_2[i]
+				optimize_γi!(count_params.K1, count_params.K2, Alpha,γ[i], phi1[i], phi2[i])
+				Elog_Theta[i,:,:] = update_Elogtheta_i(γ[i], Elog_Theta[i,:,:])
+				phi2[i][w,:, :] .= optimize_phi2_iw(phi2[i], Elog_Theta[i,:,:],Elog_B2, count_params, w, corp2)
+			end
+			for w in w_in_phi_1[i]
+				phi1[i][w,:, :] .= optimize_phi1_iw(phi1[i], Elog_Theta[i,:,:],Elog_B1, count_params, w, corp1)
+			end
+		end
+	end
+		#γ_old[i] .= deepcopy(γ[i])
+	theta_bar = γ[i][:,:] ./ sum(γ[i])
+	return theta_bar
+end
+
+
+function calc_perp(obs1, obs2,ho1, ho2,corp1, corp2, γ, Alpha, Elog_Theta,
+ Elog_B1,Elog_B2, count_params, phi1, phi2, w_in_phi_1, w_in_phi_2,w_in_ho_1,w_in_ho_2, B1_est, B2_est)
+	corp1 = deepcopy(corp1)
+	corp2 = deepcopy(corp2)
+	l1 = 0.0
+	l2 = 0.0
+	for i in collect(keys(ho1))
+
+		theta_bar = calc_theta_bar_i(obs1, obs2,corp1, corp2, i, γ, Alpha, Elog_Theta,
+		 Elog_B1,Elog_B2, count_params, phi1, phi2, w_in_phi_1, w_in_phi_2)
+
+
+		for w in w_in_ho_1[i]
+			v = corp1.Data[i][w]
+			tmp = 0.0
+			for k in 1:count_params.K1
+				tmp += ((B1_est[k,v]*sum(theta_bar, dims=2)[k,1]))
+			end
+			l1 += log(tmp)
+		end
+		for w in w_in_ho_2[i]
+			v = corp2.Data[i][w]
+			tmp = 0.0
+			for k in 1:count_params.K2
+				tmp += ((B2_est[k,v]*sum(theta_bar, dims=1)[1,k]))
+			end
+			l2 += log(tmp)
+		end
+
+	end
+	l1/= sum(length.(collect(values(ho1))))
+	l2/= sum(length.(collect(values(ho1))))
+
+	return exp(-l1), exp(-l2)
 end
