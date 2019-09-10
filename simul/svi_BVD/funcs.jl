@@ -82,6 +82,13 @@ function optimize_γi!(K1_, K2_, Alpha_,γ_, phi1_, phi2_)
 		end
 	end
 end
+function optimize_γi_2!(K1_, K2_, Alpha_,γ_, sum_phi1_, sum_phi2_)
+	for k1 in 1:K1_
+		for k2 in 1:K2_
+			γ_[k1, k2] = Alpha_[k1 ,k2] + sum_phi1_[k1, k2] + sum_phi2_[k1, k2]
+		end
+	end
+end
 """
 Optimize all b1 per topic
 """
@@ -123,6 +130,11 @@ function optimize_b1(mb_, beta_prior, phi, corpus_::Corpus, params_::CountParams
 	end
 	return b_
 end
+function optimize_b(len_mb, beta_prior, sum_phi_mb, V::Int64, K::Int64, N::Int64)
+	b_ = ones(Float64, (K, V)) .* beta_prior
+	b_ .+= (N/len_mb) .* sum_phi_mb
+	return b_
+end
 """
 Optimize all b2
 """
@@ -138,6 +150,15 @@ function optimize_b2(mb_, beta_prior, phi, corpus_::Corpus, params_::CountParams
 	end
 	return b_
 end
+# function optimize_b1_2(len_mb, beta_prior, sum_phi_mb, V::Int64, K::Int64, N::Int64)
+# 	b_ = ones(Float64, (K, V)) .* beta_prior
+# 	for k in 1:K
+# 		for v in 1:V
+# 			b_[k,v] += (N/len_mb)*sum_phi_mb[k,v]
+# 		end
+# 	end
+# 	return b_
+# end
 """
 Optimize all phi atoms
 """
@@ -153,6 +174,16 @@ function optimize_phi1_iw(phi_, Elog_Theta_,Elog_B1_, params_::CountParams, w, d
 	phi_ = S
 	return phi_
 end
+function optimize_phi1_iw_2(Elog_Theta_,Elog_B1_, params_::CountParams, v)
+	#####
+	S = zeros(Float64, (params_.K1,params_.K2))
+	S .+= Elog_Theta_[:,:]
+	for k in 1:params_.K2
+		S[:,k] .+= Elog_B1_[:,v]   #add vector to each row
+	end
+	S = deepcopy(softmax(S))
+	return S
+end
 
 function optimize_phi2_iw(phi_, Elog_Theta_,Elog_B2_, params_::CountParams, w, doc)
 	#####
@@ -166,7 +197,17 @@ function optimize_phi2_iw(phi_, Elog_Theta_,Elog_B2_, params_::CountParams, w, d
 	S = deepcopy(softmax(S))
 	phi_ = S
 	return phi_
+end
+function optimize_phi2_iw_2(Elog_Theta_,Elog_B2_, params_::CountParams,v)
+	#####
 
+	S = zeros(Float64, (params_.K1,params_.K2))
+	S .+= Elog_Theta_[:,:]
+	for k in 1:params_.K1
+		S[k,:] .+= Elog_B2_[:,v]   #add vector to each row
+	end
+	S = deepcopy(softmax(S))
+	return S
 end
 
 function get_lr(epoch, S, κ)
@@ -183,26 +224,17 @@ function calc_theta_bar_i(obs1, obs2,Corpus1, Corpus2, i, γ, Alpha, Elog_Theta,
 	doc2 = deepcopy(obs2[i])
 	corp1 = deepcopy(Corpus1.Data[i])
 	corp2 = deepcopy(Corpus2.Data[i])
-	for _u in 1:3
-		if rand() > .5
+	for _u in 1:5
 			###questionable indexes
-			for w in w_in_phi_1[i]
-				phi1[i][w,:, :] .= optimize_phi1_iw(phi1[i], Elog_Theta[i,:,:],Elog_B1, count_params, w, corp1)
-			end
-
-			for w in w_in_phi_2[i]
-				phi2[i][w,:, :] .= optimize_phi2_iw(phi2[i], Elog_Theta[i,:,:],Elog_B2, count_params, w, corp2)
-			end
-		else
-			for w in w_in_phi_2[i]
-				optimize_γi!(count_params.K1, count_params.K2, Alpha,γ[i], phi1[i], phi2[i])
-				Elog_Theta[i,:,:] = update_Elogtheta_i(γ[i], Elog_Theta[i,:,:])
-				phi2[i][w,:, :] .= optimize_phi2_iw(phi2[i], Elog_Theta[i,:,:],Elog_B2, count_params, w, corp2)
-			end
-			for w in w_in_phi_1[i]
-				phi1[i][w,:, :] .= optimize_phi1_iw(phi1[i], Elog_Theta[i,:,:],Elog_B1, count_params, w, corp1)
-			end
+		for w in w_in_phi_1[i]
+			phi1[i][w,:, :] .= optimize_phi1_iw(phi1[i], Elog_Theta[i,:,:],Elog_B1, count_params, w, corp1)
 		end
+		for w in w_in_phi_2[i]
+			phi2[i][w,:, :] .= optimize_phi2_iw(phi2[i], Elog_Theta[i,:,:],Elog_B2, count_params, w, corp2)
+		end
+
+		optimize_γi!(count_params.K1, count_params.K2, Alpha,γ[i], phi1[i], phi2[i])
+		Elog_Theta[i,:,:] = update_Elogtheta_i(γ[i], Elog_Theta[i,:,:])
 	end
 		#γ_old[i] .= deepcopy(γ[i])
 	theta_bar = γ[i][:,:] ./ sum(γ[i])

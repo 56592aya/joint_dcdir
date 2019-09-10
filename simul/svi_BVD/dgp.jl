@@ -4,7 +4,7 @@ include("utils.jl")
 using Random
 using Distributions
 using LinearAlgebra
-Random.seed!(1234)
+
 
 mutable struct Corpus
 	N::Int64
@@ -122,8 +122,8 @@ function simulate_data(N, K1, K2, V1, V2,β1_single_truth, β2_single_truth,wlen
          # println(length(y1))
          # println(length(y2))
  		if ((length(y1) == V1) && (length(y2) == V2))
-         	println(length(y1))
- 		    println(length(y2))
+         	#println(length(y1))
+ 		    #println(length(y2))
              return α_truth,Α_truth, θ_truth,Θ_truth,Β1_truth, Β2_truth, β1_truth, β2_truth,V1, V2, corp1, corp2
  		else
          	y1 = Int64[]
