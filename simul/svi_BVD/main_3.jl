@@ -142,7 +142,7 @@ function main(args)
 				@save "$(folder)/B1_at_epoch_$(epoch_count)"  B1_est
 				@save "$(folder)/B2_at_epoch_$(epoch_count)"  B2_est
 				if length(perp1_list) > 2
-					if (abs(perp1_list[end]-perp1_list[end-1])/perp1_list[end] < 1e-8) ||
+					if (abs(perp1_list[end]-perp1_list[end-1])/perp1_list[end] < 1e-8) &&
 						(abs(perp2_list[end]-perp2_list[end-1])/perp2_list[end] < 1e-8)
 						converged  = true
 					end
@@ -159,6 +159,7 @@ function main(args)
 
 		end
 		mb = mbs[mindex]
+
 		ρ = get_lr(iter, S, κ)
 		sum_phi_1_mb = zeros(Float64, (count_params.K1,Corpus1.V))
 		sum_phi_2_mb = zeros(Float64, (count_params.K2,Corpus2.V))
@@ -166,10 +167,13 @@ function main(args)
 		sum_phi_2_i = zeros(Float64, (count_params.K1, count_params.K2))
 		for i in mb
 
+
 			Elog_Theta[i,:,:] = update_Elogtheta_i(γ[i], Elog_Theta[i,:,:])
 	 		doc1 = deepcopy(Corpus1.Data[i])
 	 		doc2 = deepcopy(Corpus2.Data[i])
-			for _u in 1:5
+			γ_old = deepcopy(γ[i])
+			gamma_c = false
+			for _u in 1:30
 				sum_phi_1_i = zeros(Float64, (count_params.K1, count_params.K2))
 				for val in unique(doc1)
 					x = findall(x -> x == val, doc1)
@@ -179,7 +183,7 @@ function main(args)
 					end
 
 					sum_phi_1_i .+= length(x).*y
-					if _u == 5
+					if (_u == 30) || gamma_c
 						sum_phi_1_mb[:,val] .+= sum(length(x).* y, dims = 2)[:,1]
 					end
 				end
@@ -191,13 +195,18 @@ function main(args)
 						phi2[i][xx,:, :] .= y
 					end
 					sum_phi_2_i .+= length(x).*y
-					if _u == 5
+					if (_u == 30) || gamma_c
 						sum_phi_2_mb[:,val] .+= sum(length(x).* y, dims = 1)[1,:]
 					end
 				end
 				optimize_γi_2!(count_params.K1, count_params.K2, Alpha,γ[i], sum_phi_1_i, sum_phi_2_i)
 				Elog_Theta[i,:,:] = update_Elogtheta_i(γ[i], Elog_Theta[i,:,:])
+				if (mean(abs.(γ_old .- γ[i])/γ[i])) < 1e-4
+					gamma_c = true
+				end
+				γ_old = deepcopy(γ[i])
 	 		end
+
 		end # i in mb end
 
 

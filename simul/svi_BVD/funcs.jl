@@ -224,28 +224,57 @@ function calc_theta_bar_i(obs1, obs2,Corpus1, Corpus2, i, γ, Alpha, Elog_Theta,
 	doc2 = deepcopy(obs2[i])
 	corp1 = deepcopy(Corpus1.Data[i])
 	corp2 = deepcopy(Corpus2.Data[i])
-	for _u in 1:5
-			###questionable indexes
-		for w in w_in_phi_1[i]
-			phi1[i][w,:, :] .= optimize_phi1_iw(phi1[i], Elog_Theta[i,:,:],Elog_B1, count_params, w, corp1)
-		end
-		for w in w_in_phi_2[i]
-			phi2[i][w,:, :] .= optimize_phi2_iw(phi2[i], Elog_Theta[i,:,:],Elog_B2, count_params, w, corp2)
-		end
 
-		optimize_γi!(count_params.K1, count_params.K2, Alpha,γ[i], phi1[i], phi2[i])
+	sum_phi_1_i = zeros(Float64, (count_params.K1, count_params.K2))
+	sum_phi_2_i = zeros(Float64, (count_params.K1, count_params.K2))
+	#############
+	for _u in 1:10
+		sum_phi_1_i = zeros(Float64, (count_params.K1, count_params.K2))
+		for val in unique(corp1[w_in_phi_1[i]])
+			x = findall(x -> x == val, corp1[w_in_phi_1[i]])
+
+			y = optimize_phi1_iw_2(Elog_Theta[i,:,:],Elog_B1, count_params,val)
+			for xx in x
+				phi1[i][xx,:, :] .= y
+			end
+
+			sum_phi_1_i .+= length(x).*y
+		end
+		sum_phi_2_i = zeros(Float64, (count_params.K1, count_params.K2))
+		for val in unique(corp2[w_in_phi_2[i]])
+			x = findall(x -> x == val, corp2[w_in_phi_2[i]])
+			y = optimize_phi2_iw_2(Elog_Theta[i,:,:],Elog_B2, count_params,val)
+			for xx in x
+				phi2[i][xx,:, :] .= y
+			end
+			sum_phi_2_i .+= length(x).*y
+		end
+		optimize_γi_2!(count_params.K1, count_params.K2, Alpha,γ[i], sum_phi_1_i, sum_phi_2_i)
 		Elog_Theta[i,:,:] = update_Elogtheta_i(γ[i], Elog_Theta[i,:,:])
 	end
+	#############
+	# for _u in 1:5
+	# 		###questionable indexes
+	# 	for w in w_in_phi_1[i]
+	# 		phi1[i][w,:, :] .= optimize_phi1_iw(phi1[i], Elog_Theta[i,:,:],Elog_B1, count_params, w, corp1)
+	# 	end
+	# 	for w in w_in_phi_2[i]
+	# 		phi2[i][w,:, :] .= optimize_phi2_iw(phi2[i], Elog_Theta[i,:,:],Elog_B2, count_params, w, corp2)
+	# 	end
+	#
+	# 	optimize_γi!(count_params.K1, count_params.K2, Alpha,γ[i], phi1[i], phi2[i])
+	# 	Elog_Theta[i,:,:] = update_Elogtheta_i(γ[i], Elog_Theta[i,:,:])
+	# end
 		#γ_old[i] .= deepcopy(γ[i])
 	theta_bar = γ[i][:,:] ./ sum(γ[i])
 	return theta_bar
 end
 
 
-function calc_perp(obs1, obs2,ho1, ho2,corp1, corp2, γ, Alpha, Elog_Theta,
+function calc_perp(obs1, obs2,ho1, ho2,corpus1, corpus2, γ, Alpha, Elog_Theta,
  Elog_B1,Elog_B2, count_params, phi1, phi2, w_in_phi_1, w_in_phi_2,w_in_ho_1,w_in_ho_2, B1_est, B2_est)
-	corp1 = deepcopy(corp1)
-	corp2 = deepcopy(corp2)
+	corp1 = deepcopy(corpus1)
+	corp2 = deepcopy(corpus2)
 	l1 = 0.0
 	l2 = 0.0
 	for i in collect(keys(ho1))
@@ -273,7 +302,7 @@ function calc_perp(obs1, obs2,ho1, ho2,corp1, corp2, γ, Alpha, Elog_Theta,
 
 	end
 	l1/= sum(length.(collect(values(ho1))))
-	l2/= sum(length.(collect(values(ho1))))
+	l2/= sum(length.(collect(values(ho2))))
 
 	return exp(-l1), exp(-l2)
 end
