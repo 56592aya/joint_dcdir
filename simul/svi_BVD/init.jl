@@ -1,28 +1,21 @@
-function init_params(params_::Params, beta1_prior_, beta2_prior_,
+function init_params(K1::Int64,K2::Int64, beta1_prior_, beta2_prior_,
 	 alpha_prior_, corpus1_::Corpus, corpus2_::Corpus)
-	# N = max(length(corp1_), length(corp2_))
-	# K1 = K1_
-	# K2 = K2_
-	# wlens1 = [length(corp1_[i]) for i in 1:N]
-	# wlens2 = [length(corp2_[i]) for i in 1:N]
-	#priors
-	alpha_vec = rand(Uniform(alpha_prior_/2,alpha_prior_*2), (params_.K1*params_.K2)) .* ones(Float64, params_.K1*params_.K2)
-	Alpha =  permutedims(reshape(alpha_vec, (params_.K2, params_.K1)), (2,1))
-	beta1 = ones(Float64, (params_.K1,corpus1_.V)) .* rand(Uniform(beta1_prior_/4, beta1_prior_*2), params_.K1)
-	beta2 = ones(Float64, (params_.K2,corpus2_.V)) .* rand(Uniform(beta2_prior_/4, beta2_prior_*2), params_.K2)
+	N = max(corpus1_.N, corpus2_.N)
+	alpha_vec = rand(Uniform(alpha_prior_/2,alpha_prior_*2), (K1*K2)) .* ones(Float64, K1*K2)
+	Alpha =  permutedims(reshape(alpha_vec, (K2, K1)), (2,1))
+	beta1 = ones(Float64, (K1,corpus1_.V)) .* rand(Uniform(beta1_prior_/4, beta1_prior_*2), K1)
+	beta2 = ones(Float64, (K2,corpus2_.V)) .* rand(Uniform(beta2_prior_/4, beta2_prior_*2), K2)
 	#variational params
-	phi1 = [(1.0/(params_.K1*params_.K2)) .* ones(Float64, (corpus1_.doc_lens[i], params_.K1, params_.K2)) for i in 1:params_.N]
-	phi2 = [(1.0/(params_.K1*params_.K2)) .* ones(Float64, (corpus2_.doc_lens[i], params_.K1, params_.K2)) for i in 1:params_.N]
-	γ = [ones(Float64, (params_.K1, params_.K2)) for i in 1:params_.N]
-	# for i in 1:N
-	# 	# γ[i] = deepcopy(Alpha)
-	# 	# γ[i] = [ones(Float64, (K1, K2)) for i in 1:N]
-	# end
+
+	phi1 = [(1.0/(K1*K2)) .* ones(Float64, (corpus1_.doc_lens[i], K1, K2)) for i in 1:N]
+	phi2 = [(1.0/(K1*K2)) .* ones(Float64, (corpus2_.doc_lens[i], K1, K2)) for i in 1:N]
+
+	γ = [ones(Float64, (K1, K2)) for i in 1:N]
 	b1 = deepcopy(beta1)
 	b2 = deepcopy(beta2)
-	Elog_B1 = zeros(Float64, (params_.K1, corpus1_.V))
-	Elog_B2 = zeros(Float64, (params_.K2, corpus2_.V))
-	Elog_Theta = zeros(Float64, (params_.N, params_.K1, params_.K2))
+	Elog_B1 = zeros(Float64, (K1, corpus1_.V))
+	Elog_B2 = zeros(Float64, (K2, corpus2_.V))
+	Elog_Theta = zeros(Float64, (N, K1, K2))
 	## Also make sure vocab is the ones used.
 	return 	alpha_vec, Alpha,beta1, beta2,
 			phi1, phi2, γ, b1, b2,Elog_B1, Elog_B2,Elog_Theta
