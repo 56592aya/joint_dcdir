@@ -1,17 +1,5 @@
-using Random
-Random.seed!(1234)
-using DataFrames
-using DelimitedFiles
-using ArgParse
-using FileIO
-using JLD2
-using BenchmarkTools
-using Logging
-include("utils.jl")
-include("init.jl")
-include("MVD.jl")
-include("dgp.jl")
-include("funcs.jl")
+include("loader.jl")
+include("funcs2.jl")
 function main(args)
 	s = ArgParseSettings()
     @add_arg_table s begin
@@ -83,33 +71,34 @@ function main(args)
 
 
 
-	N = 2000
-	K1 = 5
-	K2 = 3
-	V1 = 200
-	V2 = 100
-	α_single_truth = 0.1
-	β1_single_truth = .3
-	β2_single_truth = .3
-	wlen1_single = 100
-	wlen2_single = 80
-	sparsity = 0.3
+	# N = 5000
+	# K1 = 5
+	# K2 = 5
+	# V1 = 100
+	# V2 = 100
+	# α_single_truth = 0.99
+	# β1_single_truth = .3
+	# β2_single_truth = .3
+	# wlen1_single = 200
+	# wlen2_single = 200
+	# sparsity = 0.0
 
 
 	folder = mkdir("$(N)_$(K1)_$(K2)_$(V1)_$(V2)_$(α_single_truth)_$(β1_single_truth)_$(β2_single_truth)_$(sparsity)")
 	#########################
 	α,Α, θ,Θ, Β1, Β2, β1, β2, V1, V2, corp1, corp2 =
-	 Create_Truth(N, K1, K2, V1, V2, β1_single_truth, β2_single_truth, wlen1_single, wlen2_single, sparsity)
+	 Create_Truth(N, K1, K2, V1, V2,α_single_truth, β1_single_truth, β2_single_truth, wlen1_single, wlen2_single, sparsity)
 
 	 α_truth,Α_truth, θ_truth,Θ_truth,Β1_truth, Β2_truth, β1_truth, β2_truth,V1, V2, corp1, corp2=
-	 simulate_data(N, K1, K2, V1, V2,β1_single_truth, β2_single_truth,wlen1_single, wlen2_single,
+	 simulate_data(N, K1, K2, V1, V2,α_single_truth,β1_single_truth, β2_single_truth,wlen1_single, wlen2_single,
 	 sparsity)
 
-	 # B11 = deepcopy(collect(transpose(Β1_truth)))
-	 # B11 = collect(transpose((sort_by_argmax!(B11))[1]))
-	 # B22 = deepcopy(collect(transpose(Β2_truth)))
-	 # B22 = collect(transpose((sort_by_argmax!(B22))[1]))
-	 #
+	 # B11,chert1 = sort_by_argmax!(deepcopy(collect(transpose(Β1_truth))))
+	 # # B11 = collect(transpose((sort_by_argmax!(B11))[1]))
+	 # B22,chert2 = sort_by_argmax!(deepcopy(collect(transpose(Β2_truth))))
+	 # # B22 = collect(transpose((sort_by_argmax!(B22))[1]))
+	 # #
+	 # # using Plots
 	 # Plots.heatmap(B11, yflip=true)
 	 # Plots.heatmap(B22, yflip=true)
 

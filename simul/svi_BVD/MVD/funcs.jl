@@ -12,7 +12,7 @@ function init_params(K1::Int64,K2::Int64, beta1_prior_, beta2_prior_,
 
 	alpha_vec = rand(Uniform(alpha_prior_/2,alpha_prior_*2), (K1*K2)) .* ones(Float64, K1*K2)
 	Alpha =  permutedims(reshape(alpha_vec, (K2, K1)), (2,1))
-	Alpha =  ones(Float64, (K1, K2)) .* alpha_prior_
+	# Alpha =  ones(Float64, (K1, K2)) .* alpha_prior_
 	B1 = ones(Float64, (K1,corpus1_.V)) .* rand(Uniform(beta1_prior_/4, beta1_prior_*2), K1)
 	B2 = ones(Float64, (K2,corpus2_.V)) .* rand(Uniform(beta2_prior_/4, beta2_prior_*2), K2)
 	#variational params

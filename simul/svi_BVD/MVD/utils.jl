@@ -1,8 +1,3 @@
-using BenchmarkTools
-using Random
-using Distributions
-using LinearAlgebra
-
 VectorList{T} = Vector{Vector{T}}
 MatrixList{T} = Vector{Matrix{T}}
 mutable struct Document
@@ -15,8 +10,26 @@ mutable struct Corpus
 	N::Int64
 	V::Int64
 end
-
-
+struct CountParams
+	N::Int64
+	K1::Int64
+	K2::Int64
+end
+mutable struct MVD
+    K1::Int64
+    K2::Int64
+    Corpus1::Corpus
+    Corpus2::Corpus
+    Alpha::Matrix{Float64}
+    B1::Matrix{Float64}
+    B2::Matrix{Float64}
+    Elog_B1::Matrix{Float64}
+    Elog_B2::Matrix{Float64}
+    Elog_Theta::MatrixList{Float64}
+    γ::MatrixList{Float64}
+    b1::Matrix{Float64}
+    b2::Matrix{Float64}
+end
 function digamma_(x::Float64)
 	p=zero(Float64)
   	x=x+6.0
@@ -25,6 +38,50 @@ function digamma_(x::Float64)
   	p=p+log(x)-0.5/x-1.0/(x-1.0)-1.0/(x-2.0)-1.0/(x-3.0)-1.0/(x-4.0)-1.0/(x-5.0)-1.0/(x-6.0)
   	p
 end
+
+function trigamma_(x::Float64)
+	p=zero(Float64)
+    x=x+6.0;
+    p=1.0/(x*x);
+    p=(((((0.075757575757576*p-0.033333333333333)*p+0.0238095238095238)
+         *p-0.033333333333333)*p+0.166666666666667)*p+1)/x+0.5*p;
+    for i in 1:6
+        x=x-1.0;
+        p=1.0/(x*x)+p;
+	end
+    return(p)
+end
+
+
+function vectorize_mat(mat::Matrix{Float64})
+	K1, K2 = size(mat)
+	vec_ = zeros(Float64, prod(size(mat)))
+	for k1 in 1:K1
+		for k2 in 1:K2
+			vec_[K2*(k1-1) + k2] = mat[k1, k2]
+		end
+	end
+	return vec_
+end
+function matricize_vec(vec_::Vector{Float64}, K1::Int64, K2::Int64)
+	mat_ = zeros(Float64, (K1, K2))
+	for j in 1:length(vec_)
+		m = ceil(Int64, j/K2)
+		mat_[m, j-((m-1)*K2)] = vec_[j]
+	end
+	return mat_
+end
+
+
+function δ(i,j)
+	if i == j
+		return 1
+	else
+		return 0
+	end
+end
+
+
 
 function Elog(Mat::Matrix{Float64})
     digamma_.(Mat) .- digamma_(sum(Mat))
@@ -119,4 +176,95 @@ function sort_by_argmax!(X::Matrix{Float64})
 	# This way of assignment is important in arrays, el by el
 	X[:]=X_tmp[:]
 	X, permuted_index
+end
+
+function find_all(val, doc)
+	findall(x -> x == val, doc)
+end
+function get_lr(epoch, S, κ)
+	###Should this be epoch based or iter based?
+	return (S+epoch)^(-κ)
+end
+function fix_corp!(model)
+
+	c1 = deepcopy(model.Corpus1)
+	for i in 1:length(model.Corpus1.docs)
+		doc1 = model.Corpus1.docs[i]
+		uniqs1 = unique(doc1.terms)
+		counts1 = Int64[]
+		for u in uniqs1
+			counts1 = vcat(counts1, length(find_all(u, doc1.terms)))
+		end
+		c1.docs[i] = Document(uniqs1,counts1,doc1.len)
+
+	end
+	c2 = deepcopy(model.Corpus2)
+	for i in 1:length(model.Corpus2.docs)
+		doc2 = model.Corpus2.docs[i]
+		uniqs2 = unique(doc2.terms)
+		counts2 = Int64[]
+		for u in uniqs2
+			counts2 = vcat(counts2, length(find_all(u, doc2.terms)))
+		end
+		c2.docs[i] = Document(uniqs2,counts2,doc2.len)
+	end
+	model.Corpus1 = c1
+	model.Corpus2 = c2
+end
+
+function figure_sparsity!(model, sparsity, all_)
+	while true
+		y2 = Int64[]
+		if all_
+			if sparsity == 0.0
+				break
+			end
+			y2 = Int64[]
+			corp = deepcopy(model.Corpus2)
+			for i in 1:length(corp.docs)
+				num_remove = sparsity*corp.docs[i].len
+				count = 0
+				it = 1
+				rs = shuffle(collect(1:length(corp.docs[i].terms)))
+				to_remove = Int64[]
+				while count < num_remove
+					count += corp.docs[i].counts[rs[it]]
+					it +=1
+					to_remove = vcat(to_remove, rs[it])
+				end
+				corp.docs[i].counts[to_remove] .= 0
+				corp.docs[i].len = sum(corp.docs[i].counts)
+				y2 = unique(vcat(y2, corp.docs[i].terms[corp.docs[i].counts .>0]))
+			end
+			if length(unique(y2)) == corp.V
+				model.Corpus2 = corp
+				break
+			else
+				y2 = Int64[]
+			end
+
+		else
+			if sparsity == 0.0
+				break
+			end
+			y2 = Int64[]
+			corp = deepcopy(model.Corpus2)
+			num_remove = floor(Int64, sparsity*length(corp.docs))
+			to_remove = sample(collect(1:length(corp.docs)), num_remove, replace=false)
+			for j in 1:length(corp.docs)
+				if j in to_remove
+					corp.docs[j].counts .= 0
+					corp.docs[j].len = sum(corp.docs[j].counts)
+				else
+					y2 = unique(vcat(y2, corp.docs[j].terms))
+				end
+			end
+			if length(unique(y2)) == corp.V
+				model.Corpus2 = corp
+				break
+			else
+				y2 = Int64[]
+			end
+		end
+	end
 end

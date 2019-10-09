@@ -1,19 +1,5 @@
-# module DGP
-include("utils.jl")
-# using Main.Utils
-using Random
-using Distributions
-using LinearAlgebra
 
 
-# mutable struct Corpus
-# 	N::Int64
-# 	V::Int64
-# 	doc_lens::Vector{Int64}
-# 	Data::Vector{Vector{Int64}}
-# end
-
-# typeof.([N,K1,K2,V1,V2,α,Α,θ,Θ,β1,β2,Β1,Β2])
 struct Params
 	N::Int64
 	K1::Int64
@@ -30,16 +16,15 @@ struct Params
 	Β2::Matrix{Float64}
 end
 
-struct CountParams
-	N::Int64
-	K1::Int64
-	K2::Int64
-end
 
-function create_Alpha(K1::Int64, K2::Int64)
+
+function create_Alpha(K1::Int64, K2::Int64, prior)
 	tot_dim = K1*K2
-	mu_ = (inv(tot_dim))^.8; sd_ = (inv(tot_dim))^1.6;
-	res = rand(Normal(mu_, sd_), tot_dim)
+	# mu_ = (inv(tot_dim))^.8; sd_ = (inv(tot_dim))^1.6;
+	# res = rand(Normal(mu_, sd_), tot_dim)
+	res = rand(Dirichlet(tot_dim, prior))
+
+	# res ./= sum(res)
 	Res = reshape(res, (K2, K1))
 	Res = permutedims(Res, (2,1))
     return res, Res
@@ -85,8 +70,8 @@ function create_corpux(N::Int64, vec_list::Matrix{Float64}, B::Matrix{Float64},
 	return corpus
 end
 
-function Create_Truth(N, K1, K2, V1, V2, β1_single, β2_single, wlen1_single, wlen2_single, sparsity)
-	α, Α = create_Alpha(K1, K2)
+function Create_Truth(N, K1, K2, V1, V2, prior,β1_single, β2_single, wlen1_single, wlen2_single, sparsity, )
+	α, Α = create_Alpha(K1, K2,prior)
 	θ,Θ = create_Theta(α, N, K1, K2)
 	β1 = ones(Float64, (K1, V1)) .* β1_single
 	Β1 = create_B(β1, K1, V1)
@@ -106,13 +91,13 @@ function Create_Truth(N, K1, K2, V1, V2, β1_single, β2_single, wlen1_single, w
 end
 
 
-function simulate_data(N, K1, K2, V1, V2,β1_single_truth, β2_single_truth,wlen1_single, wlen2_single, sparsity)
+function simulate_data(N, K1, K2, V1, V2,prior,β1_single_truth, β2_single_truth,wlen1_single, wlen2_single, sparsity)
 	y1 = Int64[]
  	y2 = Int64[]
  	while true
 		α_truth,Α_truth, θ_truth,Θ_truth,
  		Β1_truth, Β2_truth, β1_truth, β2_truth,V1, V2, corp1, corp2 =
- 		Create_Truth(N, K1, K2, V1, V2, β1_single_truth, β2_single_truth, wlen1_single, wlen2_single,sparsity)
+ 		Create_Truth(N, K1, K2, V1, V2, prior,β1_single_truth, β2_single_truth, wlen1_single, wlen2_single,sparsity)
 		for i in 1:N
          	y1 = unique(y1)
  		  	y2 = unique(y2)
@@ -121,11 +106,7 @@ function simulate_data(N, K1, K2, V1, V2,β1_single_truth, β2_single_truth,wlen
  		end
  		y1 = unique(y1)
  		y2 = unique(y2)
-         # println(length(y1))
-         # println(length(y2))
  		if ((length(y1) == V1) && (length(y2) == V2))
-         	#println(length(y1))
- 		    #println(length(y2))
              return α_truth,Α_truth, θ_truth,Θ_truth,Β1_truth, Β2_truth, β1_truth, β2_truth,V1, V2, corp1, corp2
  		else
          	y1 = Int64[]
