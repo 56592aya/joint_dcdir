@@ -85,18 +85,18 @@ function main(args)
 
 
 
-	 # global K1 = 5
-	 # global K2 = 5
- 	 # global α_single_prior = .99
- 	 # global β1_single_prior = .2
-	 # global β2_single_prior = .2
+	 # global K1 = 4
+	 # global K2 = 4
+ 	 # global α_single_prior = .98
+ 	 # global β1_single_prior = .98
+	 # global β2_single_prior = .98
 	 # global S = 1024.0
 	 # global κ = .6
 	 # global every = 5
 	 # global MAXITER = 100000
-	 # global mb_size = 256
+	 # global mb_size = 128
 	 # global h = 0.01
-	 # global data_folder = "5000_5_5_100_100_0.99_0.3_0.3_0.0"
+	 # global data_folder = "5000_4_4_100_100_1.0_0.25_0.25_0.0"
 	 # global all_ = true
  	 # global sparsity = 0.0
 
@@ -114,12 +114,6 @@ function main(args)
 	global N = max(Corpus1.N, Corpus2.N)
 	init_params_ = init_params(K1, K2, β1_single_prior, β2_single_prior, α_single_prior, Corpus1, Corpus2);
 	model = MVD(K1, K2, Corpus1, Corpus2, init_params_...)
-
-
-
-
-
-
 
 	### BEGIN Fix Corpuses and figure sparsity in Corpus2
 	fix_corp!(model)
@@ -142,19 +136,25 @@ function main(args)
 	count_params = CountParams(model.Corpus1.N-sum(h_map), model.K1, model.K2)
 	### END setting up train, holdout and test
 	update_Elogtheta!(model.Elog_Theta, model.γ)
-	update_Elogb!(model.Elog_B1,model.b1)
-	update_Elogb!(model.Elog_B2, model.b2)
+	update_Elogb!(model,1)
+	update_Elogb!(model,2)
 
 
 	perp1_list = Float64[]
 	perp2_list = Float64[]
 	@info "VI Started"
 	global converged = false
-	for iter in 1:MAXITER
 
+
+	global zeroer_i = zeros(Float64, (count_params.K1, count_params.K2))
+	global zeroer_mb_1 = zeros(Float64, (count_params.K1,model.Corpus1.V))
+	global zeroer_mb_2 = zeros(Float64, (count_params.K2,model.Corpus2.V))
+
+	for iter in 1:MAXITER
+		# iter = 1
 		# global model, mindex, nb, mbs, count_params,mb_size, perp1_list, perp2_list,epoch_count
 
-		if mindex == (nb+1)
+		if mindex == (nb+1) || iter == 1
 
 			mbs, nb = epoch_batches(N, mb_size, h_map)
 			mindex = 1
@@ -162,10 +162,10 @@ function main(args)
 			B1_est = estimate_B(model.b1)
 			B2_est = estimate_B(model.b2)
 			# Alpha_est = deepcopy(model.Alpha)
-			if epoch_count % every == 0
+			if (epoch_count % every == 0) || (epoch_count == 0)
 				@info "starting to calc perp"
 				p1, p2 = calc_perp(model,hos1_dict,obs1_dict,hos2_dict,obs2_dict,
-				 count_params, B1_est, B2_est)
+				 count_params, B1_est, B2_est,zeroer_i)
 
 				 perp1_list = vcat(perp1_list, p1)
 				 @info "perp1=$(p1)"
@@ -194,49 +194,50 @@ function main(args)
 
 			end
 		end
-
 		mb = mbs[mindex]
-
 		ρ = get_lr(iter, S, κ)
-		sum_phi_1_mb = zeros(Float64, (count_params.K1,model.Corpus1.V))
-		sum_phi_2_mb = zeros(Float64, (count_params.K2,model.Corpus2.V))
-		zeroer_i = zeros(Float64, (count_params.K1, count_params.K2))
-		sum_phi_1_i = deepcopy(zeroer_i)
-		sum_phi_2_i = deepcopy(zeroer_i)
+		copy!(model.sum_phi_1_mb, zeroer_mb_1)
+		copyto!(model.sum_phi_2_mb, zeroer_mb_2)
+		copyto!(model.sum_phi_1_i,  zeroer_i)
+		copyto!(model.sum_phi_2_i, zeroer_i)
+
 		for i in mb
 			update_Elogtheta_i!(model, i)
-	 		doc1 = deepcopy(model.Corpus1.docs[i])
-	 		doc2 = deepcopy(model.Corpus2.docs[i])
-			γ_old = deepcopy(model.γ[i])
+	 		doc1 = model.Corpus1.docs[i]
+	 		doc2 = model.Corpus2.docs[i]
+			copyto!(model.old_γ, model.γ[i])
 			gamma_c = false
-			update_phis_gammas!(model, i, sum_phi_1_i, sum_phi_2_i,sum_phi_1_mb,sum_phi_2_mb,zeroer_i,doc1,doc2,gamma_c,γ_old)
+			update_phis_gammas!(model, i,zeroer_i,doc1,doc2,gamma_c)
 		end # i in mb end
-		old_b1 = deepcopy(model.b1)
-		model.b1 .= optimize_b(length(mb), model.B1, sum_phi_1_mb, count_params)
-		model.b1 .= (1-ρ).*old_b1 + ρ.*model.b1
-		update_Elogb!(model.Elog_B1, model.b1)
-		old_b2 = deepcopy(model.b2)
-		model.b2 .= optimize_b(length(mb), model.B2, sum_phi_2_mb,count_params)
-		model.b2 .= (1-ρ).*old_b2 + ρ.*model.b2
-		update_Elogb!(model.Elog_B2, model.b2)
+		copyto!(model.old_b1,  model.b1)
+		optimize_b!(model.b1, length(mb), model.B1, model.sum_phi_1_mb, count_params)
+		model.b1 .= (1.0-ρ).*model.old_b1 .+ ρ.*model.b1
+		update_Elogb!(model, 1)
+		copyto!(model.old_b2,model.b2)
+		optimize_b!(model.b2,length(mb), model.B2, model.sum_phi_2_mb,count_params)
+		model.b2 .= (1.0-ρ).*model.old_b2 .+ ρ.*model.b2
+		update_Elogb!(model, 2)
 
-		if epoch_count % every == 0
-			old_alpha = deepcopy(model.Alpha)
-			update_alpha!(model, mb,1.0)
-			model.Alpha .= (1-ρ).*old_alpha + ρ.*model.Alpha
-			old_beta1 = deepcopy(model.B1)
+		if (mindex == nb)
+			copyto!(model.old_Alpha,model.Alpha)
+			update_alpha!(model, mb,1.0, count_params)
+			model.Alpha .= (1.0-ρ).*model.old_Alpha .+ ρ.*model.Alpha
+			copyto!(model.old_B1, model.B1)
 			for k in 1:model.K1
 				update_beta1!(model,k, 1.0)
-				model.B1[k,:] .= (1-ρ).*old_beta1[k,:] + ρ.*model.B1[k,:]
+				model.B1[k,:] .= (1.0-ρ).*model.old_B1[k,:] .+ ρ.*model.B1[k,:]
 			end
-			old_beta2 = deepcopy(model.B2)
+
+			copyto!(model.old_B2, model.B2)
 			for k in 1:model.K2
 				update_beta2!(model,k, 1.0)
-				model.B2[k,:] .= (1-ρ).*old_beta2[k,:] + ρ.*model.B2[k,:]
+				model.B2[k,:] .= (1.0-ρ).*model.old_B2[k,:] .+ ρ.*model.B2[k,:]
 			end
 		end
 
 		mindex += 1
+		# iter +=1
+
 							  ################################
 									###For FINAL Rounds###
 							  ################################
@@ -256,11 +257,10 @@ function main(args)
 				gamma_c = false
 				update_phis_gammas!(model, i, sum_phi_1_i, sum_phi_2_i,sum_phi_1_mb,sum_phi_2_mb,zeroer_i,doc1,doc2,gamma_c,γ_old)
 			end # i in mb end
-
-			model.b1 .= optimize_b(length(mb), model.B1, sum_phi_1_mb, count_params)
-			update_Elogb!(model.Elog_B1, model.b1)
-			model.b2 .= optimize_b(length(mb), model.B2, sum_phi_2_mb, count_params)
-			update_Elogb!(model.Elog_B2, model.b2)
+			optimize_b!(model.b1, length(mb), model.B1, model.sum_phi_1_mb, count_params)
+			update_Elogb!(model, 1)
+			optimize_b!(model.b2,length(mb), model.B2, model.sum_phi_2_mb,count_params)
+			update_Elogb!(model, 2)
 			# update_alpha!(model, collect(1:count_params.N), .5)
 			break
 		end

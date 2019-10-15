@@ -9,7 +9,7 @@ using Random
 using Distributions
 using LinearAlgebra
 using Plots
-Random.seed!(1234)
+
 
 include("utils.jl")
 include("dgp.jl")

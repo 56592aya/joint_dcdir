@@ -1,5 +1,3 @@
-
-
 struct Params
 	N::Int64
 	K1::Int64
@@ -23,7 +21,6 @@ function create_Alpha(K1::Int64, K2::Int64, prior)
 	# mu_ = (inv(tot_dim))^.8; sd_ = (inv(tot_dim))^1.6;
 	# res = rand(Normal(mu_, sd_), tot_dim)
 	res = rand(Dirichlet(tot_dim, prior))
-
 	# res ./= sum(res)
 	Res = reshape(res, (K2, K1))
 	Res = permutedims(Res, (2,1))
@@ -40,7 +37,7 @@ end
 function create_B(beta_prior::Matrix{Float64}, K::Int64, V::Int64)
 	B = zeros(Float64, (K, V))
 	for k in 1:K
-		B[k,:] = rand(Distributions.Dirichlet(beta_prior[k,:]))
+		B[k,:] = rand(Dirichlet(beta_prior[k,:]))
 	end
     return B
 end
@@ -50,9 +47,15 @@ function create_doc(wlen::Int64, topic_dist_vec::Vector{Float64},
 					K1::Int64, K2::Int64)
 	doc = Int64[]
 	for w in 1:wlen
+
 		topic_temp = rand(Distributions.Categorical(topic_dist_vec))
-		row = Int64(ceil(topic_temp/K2))
-		col = topic_temp - (row-1)*K2
+		x = zeros(Int64, K1*K2)
+		x[topic_temp] = 1
+		X = matricize_vec(x, K1, K2)
+		where_ = findall(x -> x == 1, X)[1]
+		row, col = where_.I
+		# row = Int64(ceil(topic_temp/K2))
+		# col = topic_temp - (row-1)*K2
 		topic = mode_ == 1 ? row : col
 		term = rand(Distributions.Categorical(term_topic_dist[topic,:]))
 		doc = vcat(doc, term)
@@ -64,41 +67,45 @@ function create_corpux(N::Int64, vec_list::Matrix{Float64}, B::Matrix{Float64},
 
 	corpus = [Int64[] for i in 1:N]
 	for i in 1:N
+
 		doc  = create_doc(wlens[i], vec_list[i,:] ,B, mode_, K1, K2)
 		corpus[i] = vcat(corpus[i], doc)
 	end
 	return corpus
 end
 
-function Create_Truth(N, K1, K2, V1, V2, prior,β1_single, β2_single, wlen1_single, wlen2_single, sparsity, )
+function Create_Truth(N, K1, K2, V1, V2, prior,β1_single, β2_single, wlen1_single, wlen2_single)
+
 	α, Α = create_Alpha(K1, K2,prior)
 	θ,Θ = create_Theta(α, N, K1, K2)
 	β1 = ones(Float64, (K1, V1)) .* β1_single
 	Β1 = create_B(β1, K1, V1)
 	β2 = ones(Float64, (K2, V2)) .* β2_single
 	Β2 = create_B(β2, K2, V2)
-	active_count = convert(Int64, floor((1.0 - sparsity)* N))
-	active_map = repeat([false], N)
-	indx = sample(1:N, active_count, replace=false, ordered=true)
-	active_map[indx] .= true
+	# active_count = convert(Int64, floor((1.0 - sparsity)* N))
+	# active_map = repeat([false], N)
+	# indx = sample(1:N, active_count, replace=false, ordered=true)
+	# active_map[indx] .= true
 
 
 	wlens1 = [wlen1_single for i in 1:N]
-	wlens2 = [active_map[i] ? wlen2_single : 0 for i in 1:N]
+	wlens2 = [wlen2_single for i in 1:N]
 	corp1 = create_corpux(N, θ, Β1,K1,K2, wlens1, 1)
 	corp2 = create_corpux(N, θ, Β2,K1,K2, wlens2, 2)
 	return α,Α, θ,Θ, Β1, Β2, β1, β2, V1, V2, corp1, corp2
 end
 
 
-function simulate_data(N, K1, K2, V1, V2,prior,β1_single_truth, β2_single_truth,wlen1_single, wlen2_single, sparsity)
+function simulate_data(N, K1, K2, V1, V2,prior,β1_single_truth, β2_single_truth,wlen1_single, wlen2_single)
 	y1 = Int64[]
  	y2 = Int64[]
  	while true
+		# prior,β1_single_truth,β2_single_truth = .99, .2, .2
 		α_truth,Α_truth, θ_truth,Θ_truth,
  		Β1_truth, Β2_truth, β1_truth, β2_truth,V1, V2, corp1, corp2 =
- 		Create_Truth(N, K1, K2, V1, V2, prior,β1_single_truth, β2_single_truth, wlen1_single, wlen2_single,sparsity)
+ 		Create_Truth(N, K1, K2, V1, V2, prior,β1_single_truth, β2_single_truth, wlen1_single, wlen2_single)
 		for i in 1:N
+			# global y1, y2
          	y1 = unique(y1)
  		  	y2 = unique(y2)
  		    y1 = vcat(y1, corp1[i])

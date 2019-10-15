@@ -1,5 +1,5 @@
 include("loader.jl")
-include("funcs2.jl")
+Random.seed!(1234)
 function main(args)
 	s = ArgParseSettings()
     @add_arg_table s begin
@@ -43,10 +43,6 @@ function main(args)
 			help = "beta2 truth"
 			arg_type = Float64
 			default = .3
-		"--sparse"
-			help = "sparsity in mode 2"
-			arg_type = Float64
-			default = 0.0
 
     end
     # # #
@@ -67,40 +63,30 @@ function main(args)
 	β2_single_truth = parsed_args["beta2"]
 	wlen1_single = parsed_args["wlen1"]
 	wlen2_single = parsed_args["wlen2"]
-	sparsity = parsed_args["sparse"]
 
 
 
-	# N = 5000
+	# N = 10000
 	# K1 = 5
 	# K2 = 5
 	# V1 = 100
 	# V2 = 100
-	# α_single_truth = 0.99
-	# β1_single_truth = .3
-	# β2_single_truth = .3
-	# wlen1_single = 200
-	# wlen2_single = 200
-	# sparsity = 0.0
+	# α_single_truth = 1.1
+	# β1_single_truth = .05
+	# β2_single_truth = .05
+	# wlen1_single = 250
+	# wlen2_single = 250
 
 
-	folder = mkdir("$(N)_$(K1)_$(K2)_$(V1)_$(V2)_$(α_single_truth)_$(β1_single_truth)_$(β2_single_truth)_$(sparsity)")
+	folder = mkdir("$(N)_$(K1)_$(K2)_$(V1)_$(V2)_$(α_single_truth)_$(β1_single_truth)_$(β2_single_truth)")
 	#########################
 	α,Α, θ,Θ, Β1, Β2, β1, β2, V1, V2, corp1, corp2 =
-	 Create_Truth(N, K1, K2, V1, V2,α_single_truth, β1_single_truth, β2_single_truth, wlen1_single, wlen2_single, sparsity)
+	 Create_Truth(N, K1, K2, V1, V2,α_single_truth, β1_single_truth, β2_single_truth, wlen1_single, wlen2_single)
 
 	 α_truth,Α_truth, θ_truth,Θ_truth,Β1_truth, Β2_truth, β1_truth, β2_truth,V1, V2, corp1, corp2=
-	 simulate_data(N, K1, K2, V1, V2,α_single_truth,β1_single_truth, β2_single_truth,wlen1_single, wlen2_single,
-	 sparsity)
+	 simulate_data(N, K1, K2, V1, V2,α_single_truth,β1_single_truth, β2_single_truth,wlen1_single, wlen2_single)
 
-	 # B11,chert1 = sort_by_argmax!(deepcopy(collect(transpose(Β1_truth))))
-	 # # B11 = collect(transpose((sort_by_argmax!(B11))[1]))
-	 # B22,chert2 = sort_by_argmax!(deepcopy(collect(transpose(Β2_truth))))
-	 # # B22 = collect(transpose((sort_by_argmax!(B22))[1]))
-	 # #
-	 # # using Plots
-	 # Plots.heatmap(B11, yflip=true)
-	 # Plots.heatmap(B22, yflip=true)
+
 
 
 
@@ -115,6 +101,15 @@ function main(args)
 	Corpus2 = Corpus(Docs2, length(Docs2), V2)
 	@save "$(folder)/corpus1" Corpus1
 	@save "$(folder)/corpus2" Corpus2
+
+	B11,chert1 = sort_by_argmax!(deepcopy(collect(transpose(Truth_Params.Β1))))
+	B22,chert2 = sort_by_argmax!(deepcopy(collect(transpose(Truth_Params.Β2))))
+	Plots.heatmap(B11, yflip=true)
+	savefig("$(folder)/B1_truth.png")
+	Plots.heatmap(B22, yflip=true)
+	savefig("$(folder)/B2_truth.png")
+	Plots.heatmap(Truth_Params.Α, yflip=true)
+	savefig("$(folder)/Alpha_truth.png")
 end
 
 main(ARGS)

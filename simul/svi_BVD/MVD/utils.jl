@@ -21,26 +21,40 @@ mutable struct MVD
     Corpus1::Corpus
     Corpus2::Corpus
     Alpha::Matrix{Float64}
+    old_Alpha::Matrix{Float64}
     B1::Matrix{Float64}
-    B2::Matrix{Float64}
+    old_B1::Matrix{Float64}
+	B2::Matrix{Float64}
+    old_B2::Matrix{Float64}
     Elog_B1::Matrix{Float64}
     Elog_B2::Matrix{Float64}
     Elog_Theta::MatrixList{Float64}
     γ::MatrixList{Float64}
+    old_γ::Matrix{Float64}
     b1::Matrix{Float64}
+    old_b1::Matrix{Float64}
     b2::Matrix{Float64}
+    old_b2::Matrix{Float64}
+	temp::Matrix{Float64}
+	sstat_i::Matrix{Float64}
+	sstat_mb_1::Vector{Float64}
+	sstat_mb_2::Vector{Float64}
+	sum_phi_1_mb::Matrix{Float64}
+	sum_phi_2_mb::Matrix{Float64}
+	sum_phi_1_i::Matrix{Float64}
+	sum_phi_2_i::Matrix{Float64}
+
 end
 function digamma_(x::Float64)
-	p=zero(Float64)
+	# p=zero(Float64)
   	x=x+6.0
-  	p=1.0/(x*x)
-  	p=(((0.004166666666667*p-0.003968253986254)*p+0.008333333333333)*p-0.083333333333333)*p
-  	p=p+log(x)-0.5/x-1.0/(x-1.0)-1.0/(x-2.0)-1.0/(x-3.0)-1.0/(x-4.0)-1.0/(x-5.0)-1.0/(x-6.0)
+  	p=1.0/abs2(x)
+  	p= (((0.004166666666667*p-0.003968253986254)*p+0.008333333333333)*p-0.083333333333333)*p
+  	p= p+log(x)-0.5/x-1.0/(x-1.0)-1.0/(x-2.0)-1.0/(x-3.0)-1.0/(x-4.0)-1.0/(x-5.0)-1.0/(x-6.0)
   	p
 end
 
 function trigamma_(x::Float64)
-	p=zero(Float64)
     x=x+6.0;
     p=1.0/(x*x);
     p=(((((0.075757575757576*p-0.033333333333333)*p+0.0238095238095238)
@@ -52,7 +66,6 @@ function trigamma_(x::Float64)
     return(p)
 end
 
-
 function vectorize_mat(mat::Matrix{Float64})
 	K1, K2 = size(mat)
 	vec_ = zeros(Float64, prod(size(mat)))
@@ -63,7 +76,25 @@ function vectorize_mat(mat::Matrix{Float64})
 	end
 	return vec_
 end
+function vectorize_mat(mat::Matrix{Int64})
+	K1, K2 = size(mat)
+	vec_ = zeros(Float64, prod(size(mat)))
+	for k1 in 1:K1
+		for k2 in 1:K2
+			vec_[K2*(k1-1) + k2] = mat[k1, k2]
+		end
+	end
+	return vec_
+end
 function matricize_vec(vec_::Vector{Float64}, K1::Int64, K2::Int64)
+	mat_ = zeros(Float64, (K1, K2))
+	for j in 1:length(vec_)
+		m = ceil(Int64, j/K2)
+		mat_[m, j-((m-1)*K2)] = vec_[j]
+	end
+	return mat_
+end
+function matricize_vec(vec_::Vector{Int64}, K1::Int64, K2::Int64)
 	mat_ = zeros(Float64, (K1, K2))
 	for j in 1:length(vec_)
 		m = ceil(Int64, j/K2)
@@ -82,13 +113,18 @@ function δ(i,j)
 end
 
 
-
 function Elog(Mat::Matrix{Float64})
     digamma_.(Mat) .- digamma_(sum(Mat))
 end
+
 function Elog(Vec::Vector{Float64})
     digamma_.(Vec) .- digamma_(sum(Vec))
 end
+
+function Elog(Vec)
+    digamma_.(Vec) .- digamma_(sum(Vec))
+end
+
 
 
 function logsumexp(X::Vector{Float64})
@@ -142,9 +178,9 @@ function logsumexp(X::Float64, Y::Float64)
     log(r) + alpha
 end
 
-function softmax(MEM::Matrix{Float64},X::Matrix{Float64})
+function softmax!(MEM::Matrix{Float64},X::Matrix{Float64})
     lse = logsumexp(X)
-    @.(MEM = (exp(X - lse)))
+    @. (MEM = (exp(X - lse)))
 end
 function softmax(X::Matrix{Float64})
     return exp.(X .- logsumexp(X))
