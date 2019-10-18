@@ -18,10 +18,7 @@ end
 
 function create_Alpha(K1::Int64, K2::Int64, prior)
 	tot_dim = K1*K2
-	# mu_ = (inv(tot_dim))^.8; sd_ = (inv(tot_dim))^1.6;
-	# res = rand(Normal(mu_, sd_), tot_dim)
 	res = rand(Dirichlet(tot_dim, prior))
-	# res ./= sum(res)
 	Res = reshape(res, (K2, K1))
 	Res = permutedims(Res, (2,1))
     return res, Res
@@ -54,8 +51,6 @@ function create_doc(wlen::Int64, topic_dist_vec::Vector{Float64},
 		X = matricize_vec(x, K1, K2)
 		where_ = findall(x -> x == 1, X)[1]
 		row, col = where_.I
-		# row = Int64(ceil(topic_temp/K2))
-		# col = topic_temp - (row-1)*K2
 		topic = mode_ == 1 ? row : col
 		term = rand(Distributions.Categorical(term_topic_dist[topic,:]))
 		doc = vcat(doc, term)
@@ -82,12 +77,6 @@ function Create_Truth(N, K1, K2, V1, V2, prior,β1_single, β2_single, wlen1_sin
 	Β1 = create_B(β1, K1, V1)
 	β2 = ones(Float64, (K2, V2)) .* β2_single
 	Β2 = create_B(β2, K2, V2)
-	# active_count = convert(Int64, floor((1.0 - sparsity)* N))
-	# active_map = repeat([false], N)
-	# indx = sample(1:N, active_count, replace=false, ordered=true)
-	# active_map[indx] .= true
-
-
 	wlens1 = [wlen1_single for i in 1:N]
 	wlens2 = [wlen2_single for i in 1:N]
 	corp1 = create_corpux(N, θ, Β1,K1,K2, wlens1, 1)

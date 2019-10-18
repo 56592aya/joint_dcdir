@@ -1,10 +1,13 @@
 function init_params(K1::Int64,K2::Int64, beta1_prior_, beta2_prior_,
 	 alpha_prior_, corpus1_, corpus2_)
 	N = max(corpus1_.N, corpus2_.N)
+
 	alpha_vec = rand(Uniform(0.0,alpha_prior_), (K1*K2))
 	Alpha = matricize_vec(alpha_vec, K1, K2)
-	B1 = rand(Uniform(0.0, beta1_prior_), (K1, corpus1_.V))
-	B2 = rand(Uniform(0.0, beta2_prior_), (K2, corpus2_.V))
+	# B1 = rand(Uniform(0.0, beta1_prior_), (K1, corpus1_.V))
+	# B2 = rand(Uniform(0.0, beta2_prior_), (K2, corpus2_.V))
+	B1 = collect(repeat(rand(Uniform(0.0, beta1_prior_), corpus1_.V), inner=(1, K1))')
+	B2 = collect(repeat(rand(Uniform(0.0, beta2_prior_), corpus2_.V), inner=(1, K2))')
 	γ = [ones(Float64, (K1, K2)) for i in 1:N]
 	b1 = deepcopy(B1)
 	b2 = deepcopy(B2)
@@ -81,8 +84,8 @@ function split_ho_obs(model, h_map)
 		end
 		terms_1 = model.Corpus1.docs[i].terms
 		terms_2 = model.Corpus2.docs[i].terms
-		partition_1 = div(length(terms_1),5)
-		partition_2 = div(length(terms_2),5)
+		partition_1 = div(length(terms_1),10)
+		partition_2 = div(length(terms_2),10)
 		hos1  = terms_1[1:partition_1]
 		obs1  = terms_1[partition_1+1:end]
 		hos2  = terms_2[1:partition_2]

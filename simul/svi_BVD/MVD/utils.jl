@@ -43,10 +43,9 @@ mutable struct MVD
 	sum_phi_2_mb::Matrix{Float64}
 	sum_phi_1_i::Matrix{Float64}
 	sum_phi_2_i::Matrix{Float64}
-
 end
+
 function digamma_(x::Float64)
-	# p=zero(Float64)
   	x=x+6.0
   	p=1.0/abs2(x)
   	p= (((0.004166666666667*p-0.003968253986254)*p+0.008333333333333)*p-0.083333333333333)*p
@@ -180,12 +179,42 @@ end
 
 function softmax!(MEM::Matrix{Float64},X::Matrix{Float64})
     lse = logsumexp(X)
-    @. (MEM = (exp(X - lse)))
+    @. (MEM = (exp(X - lse)));
 end
 function softmax(X::Matrix{Float64})
     return exp.(X .- logsumexp(X))
 end
-
+function logsumexp(X)
+    isempty(X) && return log(sum(X))
+    reduce(logaddexp, X)
+end
+function logsumexp(X::AbstractArray{T}; dims=:) where {T<:Real}
+    u = reduce(max, X, dims=dims, init=log(zero(T)))
+    u isa AbstractArray || isfinite(u) || return float(u)
+    let u=u
+        if u isa AbstractArray
+            u .+ log.(sum(exp.(X .- u); dims=dims))
+        else
+            u + log(sum(x -> exp(x-u), X))
+        end
+    end
+end
+function softmax!(r::AbstractArray{R}, x::AbstractArray{T}) where {R<:AbstractFloat,T<:Real}
+    n = length(x)
+    length(r) == n || throw(DimensionMismatch("Inconsistent array lengths."))
+    u = maximum(x)
+    s = 0.
+    @inbounds for i = 1:n
+        s += (r[i] = exp(x[i] - u))
+    end
+    invs = convert(R, inv(s))
+    @inbounds for i = 1:n
+        r[i] *= invs
+    end
+    r
+end
+softmax!(x::AbstractArray{<:AbstractFloat}) = softmax!(x, x)
+softmax(x::AbstractArray{<:Real}) = softmax!(similar(x, Float64), x)
 
 function sort_by_argmax!(X::Matrix{Float64})
 
@@ -209,7 +238,6 @@ function sort_by_argmax!(X::Matrix{Float64})
     		end
   		end
 	end
-	# This way of assignment is important in arrays, el by el
 	X[:]=X_tmp[:]
 	X, permuted_index
 end
@@ -217,12 +245,15 @@ end
 function find_all(val, doc)
 	findall(x -> x == val, doc)
 end
-function get_lr(epoch, S, κ)
-	###Should this be epoch based or iter based?
-	return (S+epoch)^(-κ)
+function get_lr(epoch::Int64, S::Float64, κ::Float64)
+	return (S+convert(Float64, epoch))^(-κ)
+end
+function mean_change(new::AbstractArray{R}, old::AbstractArray{R}) where  {R<:AbstractFloat}
+	n = length(new)
+	change = sum(abs.(new .- old))/n
+	return(change)
 end
 function fix_corp!(model)
-
 	c1 = deepcopy(model.Corpus1)
 	for i in 1:length(model.Corpus1.docs)
 		doc1 = model.Corpus1.docs[i]
@@ -302,5 +333,29 @@ function figure_sparsity!(model, sparsity, all_)
 				y2 = Int64[]
 			end
 		end
+	end
+end
+
+
+function add_vec2mcols!(mem::AbstractArray{R},mat::AbstractArray{R}, vec::AbstractVector{T}) where {R<:AbstractFloat,T<:Real}
+	@inbounds for I in CartesianIndices(mat)
+		mem[I] = mat[I] + vec[I.I[1]]
+	end
+
+end
+function add_vec2mrows!(mem::AbstractArray{R},mat::AbstractArray{R}, vec::AbstractVector{T}) where {R<:AbstractFloat,T<:Real}
+	@inbounds for I in CartesianIndices(mat)
+		mem[I] = mat[I] + vec[I.I[2]]
+	end
+end
+function rowsums!(mem::AbstractVector{R}, mat::AbstractArray{R}) where {R<:AbstractFloat,T<:Real}
+	@inbounds for I in CartesianIndices(mat)
+		mem[I.I[1]] += mat[I]
+	end
+end
+
+function colsums!(mem::AbstractVector{R}, mat::AbstractArray{R}) where {R<:AbstractFloat,T<:Real}
+	@inbounds for I in CartesianIndices(mat)
+		mem[I.I[2]] += mat[I]
 	end
 end

@@ -2,7 +2,6 @@
 function update_Elogtheta!(Elog_, γ_)
 	Elog_ .= Elog.(γ_)
 end
-
 function update_Elogtheta_i!(model, i)
 	model.Elog_Theta[i] .= Elog(model.γ[i])
 end
@@ -36,17 +35,16 @@ function estimate_B(b_)
 end
 
 function optimize_γi!(model::MVD, i)
-	@. (model.γ[i]= model.Alpha + model.sum_phi_1_i + model.sum_phi_2_i)
+	@inbounds for I in eachindex(model.γ[i])
+		model.γ[i][I] = model.Alpha[I] + model.sum_phi_1_i[I] + model.sum_phi_2_i[I]
+	end
 end
-
 function optimize_b!(b_,len_mb, model_beta, sum_phi_mb,count_params)
 	copyto!(b_, model_beta)
 	@.(b_ += (count_params.N/len_mb) * sum_phi_mb)
 end
 
-
-function optimize_phi_iw!(model::MVD, i, mode::Int64, v)
-	#####
+function optimize_phi_iw!(model::MVD, i, mode::Int64, v::Int64)
 	if mode == 1
 		softmax!(model.temp, @.(model.Elog_Theta[i] + model.Elog_B1[:,v]))
 	else
@@ -54,18 +52,15 @@ function optimize_phi_iw!(model::MVD, i, mode::Int64, v)
 	end
 end
 
-
 function update_phis_gammas!(model, i,zeroer_i,doc1,doc2,gamma_c)
-	MAXLOOP = 50
+	MAXLOOP = 500
 	counter  = 0
-	old_change = 1000000.0
 	gamma_change = 500.0
 
-	while !(gamma_c) || counter <= MAXLOOP
+	while !( gamma_c) && counter <= MAXLOOP
 		# global counter, MAXLOOP,old_change, gamma_change
 		copyto!(model.sum_phi_1_i, zeroer_i)
 		copyto!(model.sum_phi_2_i, zeroer_i)
-		# copyto!(temp,zeroer_i)
 		for (w,val) in enumerate(doc1.terms)
 			optimize_phi_iw!(model, i,1,val)
 			@. model.sstat_i = doc1.counts[w] * model.temp
@@ -78,17 +73,11 @@ function update_phis_gammas!(model, i,zeroer_i,doc1,doc2,gamma_c)
 		end
 		optimize_γi!(model, i)
 		update_Elogtheta_i!(model,i)
-		gamma_change = mean(@.(abs(model.old_γ - model.γ[i])/model.γ[i]))
-
-		# println(gamma_change)
-		# println(old_change)
-		# println(gamma_change > old_change)
-		if ((gamma_change) < 1e-5) || (gamma_change > old_change)
-			old_change = gamma_change
+		gamma_change = mean_change(model.γ[i], model.old_γ)
+		if (gamma_change < 1e-3) || counter == MAXLOOP
 			gamma_c = true
 			copyto!(model.sum_phi_1_i, zeroer_i)
 			copyto!(model.sum_phi_2_i, zeroer_i)
-			# copyto!(temp,zeroer_i)
 
 			for (w,val) in enumerate(doc1.terms)
 				optimize_phi_iw!(model, i,1,val)
@@ -107,8 +96,6 @@ function update_phis_gammas!(model, i,zeroer_i,doc1,doc2,gamma_c)
 			optimize_γi!(model, i)
 			update_Elogtheta_i!(model,i)
 		end
-		old_change = gamma_change
-
 		copyto!(model.old_γ,model.γ[i])
 		if counter == MAXLOOP
 			gamma_c = true
@@ -116,7 +103,6 @@ function update_phis_gammas!(model, i,zeroer_i,doc1,doc2,gamma_c)
 		counter += 1
 	end
 end
-##### w , and v needs to be fixed in holdout ho and obs what to save probably their indices that correposnd
 function calc_theta_bar_i(obs1_dict, obs2_dict, i, model, count_params,zeroer_i)
 	update_Elogtheta_i!(model, i)
 	doc1 = obs1_dict[i]
@@ -126,16 +112,14 @@ function calc_theta_bar_i(obs1_dict, obs2_dict, i, model, count_params,zeroer_i)
 	copyto!(model.sum_phi_1_i, zeroer_i)
 	copyto!(model.sum_phi_2_i, zeroer_i)
 	copyto!(model.old_γ ,  model.γ[i])
-	MAXLOOP = 100
+	MAXLOOP = 200
 	counter  = 0
-	old_change = 1000000.0
 	gamma_change = 500.0
 	gamma_c = false
+	model.γ[i] .= 1.0
 	#############
-	while !(gamma_c) || counter <= MAXLOOP
-
+	while !( gamma_c) && counter <= MAXLOOP
 		copyto!(model.sum_phi_1_i, zeroer_i)
-
 		obs_words_corp1inds = [find_all(d,corp1.terms)[1] for d in doc1]
 		for (key,val) in enumerate(corp1.terms[obs_words_corp1inds])
 			optimize_phi_iw!(model, i,1,val)
@@ -151,24 +135,23 @@ function calc_theta_bar_i(obs1_dict, obs2_dict, i, model, count_params,zeroer_i)
 		end
 		optimize_γi!(model, i)
 		update_Elogtheta_i!(model, i)
-		gamma_change = mean(abs.(model.old_γ .- model.γ[i])./model.γ[i])
-		if ((gamma_change) < 1e-5) || (gamma_change > old_change)
-			old_change = gamma_change
+		gamma_change = mean_change(model.γ[i], model.old_γ)
+		if (gamma_change < 1e-3) || counter == MAXLOOP
 			gamma_c = true
 		end
-		old_change = gamma_change
+		copyto!(model.old_γ,model.γ[i])
 		counter +=1
 	end
 	theta_bar = model.γ[i][:,:] ./ sum(model.γ[i])
 	return theta_bar
 end
 
-
 function calc_perp(model,hos1_dict,obs1_dict,hos2_dict,obs2_dict,count_params, B1_est, B2_est,zeroer_i)
 	corp1 = deepcopy(model.Corpus1)
 	corp2 = deepcopy(model.Corpus2)
 	l1 = 0.0
 	l2 = 0.0
+
 	for i in collect(keys(hos1_dict))
 		theta_bar = calc_theta_bar_i(obs1_dict, obs2_dict,i, model, count_params,zeroer_i)
 		for v in hos1_dict[i]
@@ -193,88 +176,48 @@ function calc_perp(model,hos1_dict,obs1_dict,hos2_dict,obs2_dict,count_params, B
 	return exp(-l1), exp(-l2)
 end
 
-
-function update_beta1!(model,k, rate_)
-	init_ = deepcopy(model.B1[k,:])
-	# init_ ./= sum(init_)
-	for _ in 1:500
-		g = digamma_(sum(init_)) .- digamma_.(init_) + Elog(model.b1[k,:])
-		q = -trigamma_.(init_)
-		c = trigamma_(sum(init_))
-		b = sum(g./q) / (1.0/c + sum(1.0./q))
-		dbeta = -(g.-b)./q
-		init_ .+= rate_.*dbeta
-		# init_ ./= sum(init_)
-		if any(init_ .<= 0.0)
-			rate_ *=.9
-			init_ = deepcopy(model.B1[k,:])
-		end
-		# println(norm(g))
-		if norm(g) < 1e-2
-			model.B1[k,:] = deepcopy(init_)
-			break
-		end
-		model.B1[k,:] = deepcopy(init_)
-	end
-end
-
-function update_beta2!(model,k, rate_)
-	# g = zeros(Float64, size(model.B2,2))
-	init_ = deepcopy(model.B2[k,:])
-	# init_ ./=sum(init_)
-	# Hinv = zeros(Float64, (size(model.B2,2),size(model.B2,2)))
-	pg = Elog(model.b2[k,:])
-	for _ in 1:500
-		g = digamma_(sum(init_)) .- digamma_.(init_) + pg
-		q = -trigamma_.(init_)
-		c = trigamma_(sum(init_))
-		b = sum(g./q) / (1.0/c + sum(1.0./q))
-		dbeta = -(g.-b)./q
-		init_ .+= rate_.*dbeta
-		# init_ ./= sum(init_)
-		if any(init_ .<= 0.0)
-			rate_ *=.9
-			init_ = deepcopy(model.B2[k,:])
-		end
-		if norm(g) < 1e-2
-			model.B2[k,:] = deepcopy(init_)
-			break
-		end
-		model.B2[k,:] = deepcopy(init_)
-	end
-end
 function update_alpha!(model, mb, rate_, count_params)
-	# g = zeros(Float64, prod(size(model.Alpha)))
 	n = length(mb)
-
-	logphat = sum([Elog(model.γ[i]) for i in mb]) / n
-
-
 	K = prod(size(model.Alpha))
-	X = hcat(vectorize_mat.(model.γ[mb])...)
-	temp_ = sum(X, dims=2)[:,1]./K
-	temp_ = matricize_vec(temp_, K1, K2)
-	init_ = deepcopy(temp_)
 
-	for _ in 1:500
-		copyto!(model.old_Alpha, init_)
-		alpha0 = sum(init_)
-		g = n.*(vectorize_mat(-Elog(init_))) + logphat
-
-		c = N*trigamma_(alpha0)
-		q = -N.*trigamma_.(vectorize_mat(init_))
-		b = sum(g./q)/(1.0/c+sum(1.0./q))
-		dalpha = -(g .- b)./q
-		init_ .+= matricize_vec(rate_.*dalpha, model.K1, model.K2)
-
-		if any(init_ .<= 0.0)
-			rate_ *=.9
-			init_ = deepcopy(temp_)
-		end
-		if norm(g) < 1e-4
-			copyto!(model.Alpha, init_)
-			break
-		end
-		copyto!(model.Alpha, init_)
+	init_ = deepcopy(model.Alpha)
+	temp_ = deepcopy(init_)
+	logphat = sum(hcat(vectorize_mat.([Elog(model.γ[i]) for i in mb])...), dims=2)[:,1] ./ (n)
+	g = (count_params.N).*(vectorize_mat(-Elog(temp_)) .+ logphat)
+	c = (count_params.N)*trigamma_(sum(temp_))
+	q = (-count_params.N).*trigamma_.(vectorize_mat(temp_))
+	b = sum(g./q)/(1.0/c+sum(1.0./q))
+	dalpha = -(g .- b)./q
+	temp_ .+= matricize_vec(rate_.*dalpha, model.K1, model.K2)
+	if any(temp_ .<= 0.0) || any(isnan.(temp_))
+		temp_ = (1.0/K).*mean(model.γ)
 	end
+	copyto!(model.Alpha, temp_)
 end
+#
+# function update_beta1!(model, rate_)
+# 	temp_ = (1.0/model.K1).*ones(Float64, length(model.b1[1,:]))
+# 	init_ = deepcopy(temp_)
+# 	logphat = sum(hcat([Elog(model.b1[k,:]) for k in 1:model.K1]...), dims = 2)[:,1]
+# 	# init_ ./= sum(init_)
+# 	for _ in 1:150
+# 		g = model.K1 * (digamma_(sum(init_)) .- digamma_.(init_)) .+ logphat
+# 		q = -model.K1.*trigamma_.(init_)
+# 		c = model.K1 * trigamma_(sum(init_))
+# 		b = sum(g./q) / (1.0/c + sum(1.0./q))
+# 		dbeta = -(g.-b)./q
+# 		init_ .+= rate_.*dbeta
+# 		# init_ ./= sum(init_)
+# 		if any(init_ .<= 0.0)
+# 			rate_ *=.9
+# 			init_ = deepcopy(model.B1[1,:])
+# 		end
+# 		# println(norm(g))
+# 		if norm(g) < 1e-4
+# 			copyto!(model.B1, collect(repeat(init_, inner = (1, model.K1))'))
+# 			break
+# 		end
+# 		copyto!(model.B1, collect(repeat(init_, inner = (1, model.K1))'))
+# 	end
+# end
+#
