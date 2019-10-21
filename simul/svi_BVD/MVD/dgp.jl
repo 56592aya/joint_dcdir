@@ -33,7 +33,7 @@ function create_Alpha_manual(K1::Int64, K2::Int64, prior)
 			if j  == i
 				continue;
 			else
-				Res[i,j] = rand(Uniform(0.0, .1), 1)
+				Res[i,j] = rand(Distributions.Uniform(0.0, .1))
 			end
 		end
 	end

@@ -3,6 +3,9 @@ Random.seed!(1234)
 function main(args)
 	s = ArgParseSettings()
     @add_arg_table s begin
+		"--manual"
+            help = "manual setting of alpha"
+            action = "store_true"
 		"-n"
             help = "number of docs"
             arg_type=Int64
@@ -43,9 +46,6 @@ function main(args)
 			help = "beta2 truth"
 			arg_type = Float64
 			default = .3
-		"--manual"               #if sparsity for all
-            help = "manual setting of alpha"
-            action = "store_true"
 
     end
     # # #
@@ -57,6 +57,7 @@ function main(args)
     @info "before parsing"
 
 	N = parsed_args["n"]
+	manual = parsed_args["manual"]
 	K1 = parsed_args["k1"]
 	K2 = parsed_args["k2"]
 	V1 = parsed_args["v1"]
@@ -66,8 +67,6 @@ function main(args)
 	β2_single_truth = parsed_args["beta2"]
 	wlen1_single = parsed_args["wlen1"]
 	wlen2_single = parsed_args["wlen2"]
-	manual = parsed_args["manual"]
-
 
 
 	# N = 10000
