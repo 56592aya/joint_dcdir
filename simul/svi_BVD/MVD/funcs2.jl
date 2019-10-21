@@ -39,9 +39,9 @@ function optimize_γi!(model::MVD, i)
 		model.γ[i][I] = model.Alpha[I] + model.sum_phi_1_i[I] + model.sum_phi_2_i[I]
 	end
 end
-function optimize_b!(b_,len_mb, model_beta, sum_phi_mb,count_params)
+function optimize_b!(b_,len_mb, model_beta, sum_phi_mb,N)
 	copyto!(b_, model_beta)
-	@.(b_ += (count_params.N/len_mb) * sum_phi_mb)
+	@.(b_ += (N/len_mb) * sum_phi_mb)
 end
 
 function optimize_phi_iw!(model::MVD, i, mode::Int64, v::Int64)
@@ -66,6 +66,7 @@ function update_phis_gammas!(model, i,zeroer_i,doc1,doc2,gamma_c)
 			@. model.sstat_i = doc1.counts[w] * model.temp
 			@.(model.sum_phi_1_i += model.sstat_i)
 		end
+
 		for (w,val) in enumerate(doc2.terms)
 			optimize_phi_iw!(model, i,2,val)
 			@. model.sstat_i = doc2.counts[w] * model.temp
@@ -85,13 +86,16 @@ function update_phis_gammas!(model, i,zeroer_i,doc1,doc2,gamma_c)
 				@.(model.sum_phi_1_i += model.sstat_i)
 				model.sstat_mb_1 .= sum(model.sstat_i, dims = 2)[:,1]
 				@.(model.sum_phi_1_mb[:,val] += model.sstat_mb_1)
+				model.alpha_sstat[i] .+= model.sstat_i
 			end
+
 			for (w,val) in enumerate(doc2.terms)
 				optimize_phi_iw!(model, i,2,val)
 				@.(model.sstat_i = doc2.counts[w] * model.temp)
 				@.(model.sum_phi_2_i += model.sstat_i)
 				model.sstat_mb_2 .= sum(model.sstat_i , dims = 1)[1,:]
 				@.(model.sum_phi_2_mb[:,val] += model.sstat_mb_2)
+				model.alpha_sstat[i] .+= model.sstat_i
 			end
 			optimize_γi!(model, i)
 			update_Elogtheta_i!(model,i)
@@ -176,48 +180,25 @@ function calc_perp(model,hos1_dict,obs1_dict,hos2_dict,obs2_dict,count_params, B
 	return exp(-l1), exp(-l2)
 end
 
-function update_alpha!(model, mb, rate_, count_params)
-	n = length(mb)
-	K = prod(size(model.Alpha))
-
-	init_ = deepcopy(model.Alpha)
-	temp_ = deepcopy(init_)
-	logphat = sum(hcat(vectorize_mat.([Elog(model.γ[i]) for i in mb])...), dims=2)[:,1] ./ (n)
-	g = (count_params.N).*(vectorize_mat(-Elog(temp_)) .+ logphat)
-	c = (count_params.N)*trigamma_(sum(temp_))
-	q = (-count_params.N).*trigamma_.(vectorize_mat(temp_))
-	b = sum(g./q)/(1.0/c+sum(1.0./q))
-	dalpha = -(g .- b)./q
-	temp_ .+= matricize_vec(rate_.*dalpha, model.K1, model.K2)
-	if any(temp_ .<= 0.0) || any(isnan.(temp_))
-		temp_ = (1.0/K).*mean(model.γ)
-	end
-	copyto!(model.Alpha, temp_)
+function update_alpha!(model, count_params)
+	x = (sum(model.γ) - sum(model.alpha_sstat))/count_params.N
+	copyto!(model.Alpha ,x)
 end
+# function update_alpha_trick!(model, mb, rate_, count_params)
+# 	n = length(mb)
+# 	K = prod(size(model.Alpha))
 #
-# function update_beta1!(model, rate_)
-# 	temp_ = (1.0/model.K1).*ones(Float64, length(model.b1[1,:]))
-# 	init_ = deepcopy(temp_)
-# 	logphat = sum(hcat([Elog(model.b1[k,:]) for k in 1:model.K1]...), dims = 2)[:,1]
-# 	# init_ ./= sum(init_)
-# 	for _ in 1:150
-# 		g = model.K1 * (digamma_(sum(init_)) .- digamma_.(init_)) .+ logphat
-# 		q = -model.K1.*trigamma_.(init_)
-# 		c = model.K1 * trigamma_(sum(init_))
-# 		b = sum(g./q) / (1.0/c + sum(1.0./q))
-# 		dbeta = -(g.-b)./q
-# 		init_ .+= rate_.*dbeta
-# 		# init_ ./= sum(init_)
-# 		if any(init_ .<= 0.0)
-# 			rate_ *=.9
-# 			init_ = deepcopy(model.B1[1,:])
-# 		end
-# 		# println(norm(g))
-# 		if norm(g) < 1e-4
-# 			copyto!(model.B1, collect(repeat(init_, inner = (1, model.K1))'))
-# 			break
-# 		end
-# 		copyto!(model.B1, collect(repeat(init_, inner = (1, model.K1))'))
+# 	init_ = deepcopy(model.Alpha)
+# 	temp_ = deepcopy(init_)
+# 	logphat = sum(hcat(vectorize_mat.([Elog(model.γ[i]) for i in mb])...), dims=2)[:,1] ./ (n)
+# 	g = (count_params.N).*(vectorize_mat(-Elog(temp_)) .+ logphat)
+# 	c = (count_params.N)*trigamma_(sum(temp_))
+# 	q = (-count_params.N).*trigamma_.(vectorize_mat(temp_))
+# 	b = sum(g./q)/(1.0/c+sum(1.0./q))
+# 	dalpha = -(g .- b)./q
+# 	temp_ .+= matricize_vec(rate_.*dalpha, model.K1, model.K2)
+# 	if any(temp_ .<= 0.0) || any(isnan.(temp_))
+# 		temp_ = (1.0/K).*mean(model.γ)
 # 	end
+# 	copyto!(model.Alpha, temp_)
 # end
-#

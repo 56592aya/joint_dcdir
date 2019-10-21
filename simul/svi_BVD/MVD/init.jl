@@ -31,8 +31,9 @@ function init_params(K1::Int64,K2::Int64, beta1_prior_, beta2_prior_,
 	sstat_i = similar(zeroer_i)
 	sstat_mb_1 = zeros(Float64, K1)
 	sstat_mb_2 = zeros(Float64, K2)
+	alpha_sstat = [deepcopy(zeroer_i) for i in 1:N]
 	return 	Alpha,old_Alpha,B1,old_B1,B2,old_B2,Elog_B1,Elog_B2,Elog_Theta,γ,old_γ,b1,old_b1,b2,old_b2,
-	temp,sstat_i,sstat_mb_1,sstat_mb_2,sum_phi_1_mb,sum_phi_2_mb,sum_phi_1_i,sum_phi_2_i
+	temp,sstat_i,sstat_mb_1,sstat_mb_2,sum_phi_1_mb,sum_phi_2_mb,sum_phi_1_i,sum_phi_2_i, alpha_sstat
 end
 
 function epoch_batches(N::Int64, mb_size::Int64, h_map::Vector{Bool})

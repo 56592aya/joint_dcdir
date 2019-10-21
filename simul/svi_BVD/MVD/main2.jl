@@ -84,20 +84,20 @@ function main(args)
 
 
 
-	# global K1 = 5
-	# global K2 = 5
-	# global α_single_prior = .99
-	# global β1_single_prior = .5
-	# global β2_single_prior = .5
-	# global S = 256.0
-	# global κ = .6
-	# global every = 5
-	# global MAXITER = 100000
-	# global mb_size = 256
-	# global h = 0.001
-	# global data_folder = "10000_5_5_50_50_1.1_0.25_0.25"
-	# global all_ = true
-	# global sparsity = 0.0
+	global K1 = 5
+	global K2 = 5
+	global α_single_prior = .99
+	global β1_single_prior = .5
+	global β2_single_prior = .5
+	global S = 256.0
+	global κ = .6
+	global every = 5
+	global MAXITER = 100000
+	global mb_size = 256
+	global h = 0.001
+	global data_folder = "10000_5_5_50_50_0.5_0.2_0.2_true"
+	global all_ = true
+	global sparsity = 0.0
 	global folder = mkdir(joinpath(data_folder,"est_$(K1)_$(K2)_$(mb_size)_$(MAXITER)_$(h)_$(S)_$(κ)_$(every)_$(α_single_prior)_$(β1_single_prior)_$(β2_single_prior)_$(all_)_$(sparsity)"))
 
 #########################
@@ -145,6 +145,7 @@ function main(args)
 
 			mbs, nb = epoch_batches(N, mb_size, h_map)
 			mindex = 1
+
 			if (epoch_count % every == 0) || (epoch_count == 0)
 				B1_est = estimate_B(model.b1)
 				B2_est = estimate_B(model.b2)
@@ -177,17 +178,23 @@ function main(args)
 		end
 
 		mb = mbs[mindex]
+		len_mb2 = sum([1 for i in mb if model.Corpus2.docs[i].len != 0])
+		N2 = sum([1 for i in 1:count_params.N if model.Corpus2.docs[i].len != 0])
 		ρ = get_lr(iter, S, κ)
+		model.alpha_sstat[mb]
 		################################
 			 ### Local Step ###
 		################################
 		for i in mb
 			model.γ[i] .= 1.0
+			copyto!(model.alpha_sstat[i],  zeroer_i)
 		end
+
 		copyto!(model.sum_phi_1_mb, zeroer_mb_1)
 		copyto!(model.sum_phi_2_mb, zeroer_mb_2)
 		copyto!(model.sum_phi_1_i,  zeroer_i)
 		copyto!(model.sum_phi_2_i, zeroer_i)
+
 		for i in mb
 			update_Elogtheta_i!(model, i)
 	 		doc1 = model.Corpus1.docs[i]
@@ -200,24 +207,24 @@ function main(args)
 			  ### Global Step ###
 		################################
 		copyto!(model.old_b1,  model.b1)
-		optimize_b!(model.b1, length(mb), model.B1, model.sum_phi_1_mb, count_params)
+		optimize_b!(model.b1, length(mb), model.B1, model.sum_phi_1_mb, count_params.N)
 		model.b1 .= (1.0-ρ).*model.old_b1 .+ ρ.*model.b1
 		update_Elogb!(model, 1)
 		copyto!(model.old_b2,model.b2)
-		optimize_b!(model.b2,length(mb), model.B2, model.sum_phi_2_mb,count_params)
+		# optimize_b!(model.b2,length(mb), model.B2, model.sum_phi_2_mb,count_params)
+		optimize_b!(model.b2,len_mb2, model.B2, model.sum_phi_2_mb,N2)
 		model.b2 .= (1.0-ρ).*model.old_b2 .+ ρ.*model.b2
 		update_Elogb!(model, 2)
+
 		################################
 			 ### Hparam Learning ###
 		################################
-		if epoch_count == 20  &&  mindex == nb
-			x = (1.0/prod(size(model.Alpha))).*mean(model.γ)
-			copyto!(model.Alpha,x./sum(x))
-		end
-		if epoch_count >= 20
+		if mindex == nb
 			copyto!(model.old_Alpha,model.Alpha)
-			update_alpha!(model, mb,ρ, count_params)
+			update_alpha!(model, count_params)
+			model.Alpha .= (1.0-ρ).*model.old_Alpha .+ ρ.*model.Alpha
 		end
+
 		mindex += 1
 
 	  	################################
@@ -241,9 +248,9 @@ function main(args)
 				gamma_c = false
 				update_phis_gammas!(model, i,zeroer_i,doc1,doc2,gamma_c)
 			end
-			optimize_b!(model.b1, length(mb), model.B1, model.sum_phi_1_mb, count_params)
+			optimize_b!(model.b1, length(mb), model.B1, model.sum_phi_1_mb, count_params.N)
 			update_Elogb!(model, 1)
-			optimize_b!(model.b2,length(mb), model.B2, model.sum_phi_2_mb,count_params)
+			optimize_b!(model.b2,len_mb2, model.B2, model.sum_phi_2_mb,N2)
 			update_Elogb!(model, 2)
 			break
 		end

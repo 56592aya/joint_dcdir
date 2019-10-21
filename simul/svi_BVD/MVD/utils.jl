@@ -43,6 +43,7 @@ mutable struct MVD
 	sum_phi_2_mb::Matrix{Float64}
 	sum_phi_1_i::Matrix{Float64}
 	sum_phi_2_i::Matrix{Float64}
+	alpha_sstat::MatrixList{Float64}
 end
 
 function digamma_(x::Float64)
